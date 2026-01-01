@@ -1,0 +1,41 @@
+name: tester
+version: 0.1.0
+expose: [tctl]
+
+config:
+  local_file: ./config.yaml
+
+commands:
+  # Primary command: mixed shell + stdio steps
+  - name: run
+    summary: Mixed shell + stdio steps with config mutations
+    steps:
+      - executor: shell
+        program: "echo 'step1: prepare environment'"
+        workdir: .
+      - executor: shell
+        program: "false"              # Intentionally failing step
+        continue_on_error: true       # Keep going even if this step fails
+      - executor: stdio
+        program: "./main.py"
+        use_stdio: true
+        workdir: .
+      - executor: shell
+        program: "echo 'step4: finalize'"
+        workdir: .
+
+  # Slow command: demonstrates timeout & fail-fast behavior
+  - name: slow
+    summary: Demonstrate timeout and fail-fast
+    steps:
+      - executor: shell
+        program: "echo 'slow step1: working...'"
+        workdir: .
+      - executor: shell
+        program: "sleep 10 && echo 'slow step2: finished sleep'"
+        workdir: .
+      - executor: stdio
+        program: "./main.py"
+        use_stdio: true
+        workdir: .
+        continue_on_error: false

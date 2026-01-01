@@ -6,7 +6,7 @@ import sys, json, time
 def main():
     req = json.load(sys.stdin)
     logs = []
-    logs.append("stdio: hello from tester")
+    logs.append("stdio: hello from tester!!!")
     logs.append("stdio: merge_strategy=" + str(req.get("merge_strategy")))
     logs.append("stdio: action=" + str(req.get("action")))
 

@@ -1,0 +1,16 @@
+apiVersion: v1
+updatedAt: '2026-01-01T14:39:41Z'
+plugins:
+  tester:
+    desc: tester
+    repo: systemnb/lyenv-plugin-center
+    subpath: plugins/tester
+    ref: main
+    shims: &id001
+    - tctl
+    versions:
+      0.1.0:
+        repo: systemnb/lyenv-plugin-center
+        subpath: plugins/tester
+        ref: main
+        shims: *id001

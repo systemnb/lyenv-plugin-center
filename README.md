@@ -1,5 +1,3 @@
-以下是对您提供的 Markdown 文档的格式修复版本。主要修复了代码块未正确闭合、列表格式混乱、标题层级和空行等问题：
-
 # Unified Plugin Authoring Guide for **lyenv**  
 *统一的 lyenv 插件制作技术文档* [中文](README_zh.md) / [English](README.md)
 

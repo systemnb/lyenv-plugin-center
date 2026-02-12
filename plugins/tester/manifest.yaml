@@ -1,0 +1,26 @@
+name: tester
+version: 0.1.0
+expose:
+  - tester
+config:
+  local_file: ./config.yaml
+commands:
+  - name: run
+    summary: 'Flow command: run'
+    steps:
+      - executor: stdio
+        program: ./scripts/start_runner.py
+        workdir: .
+        use_stdio: true
+      - executor: stdio
+        program: ./scripts/runner_N_1770791227823_ia3t.py
+        workdir: .
+        use_stdio: true
+      - executor: stdio
+        program: ./scripts/runner_N_1770791229861_vdop.py
+        workdir: .
+        use_stdio: true
+      - executor: stdio
+        program: ./scripts/end_runner.py
+        workdir: .
+        use_stdio: true

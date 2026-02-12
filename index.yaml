@@ -1,0 +1,15 @@
+apiVersion: v1
+updatedAt: '2026-02-12T10:55:20Z'
+plugins:
+  tester:
+    desc: tester
+    repo: systemnb/lyenv-plugin-center
+    subpath: plugins/tester
+    ref: main
+    shims: &id001
+    - tester
+    versions:
+      0.1.0:
+        source: https://github.com/systemnb/lyenv-plugin-center/releases/download/artifacts/tester-0.1.0.zip
+        sha256: e6063bd41f12702433dfe437153ab42bd24fd808b93fa9de09ae6b5622fb01b7
+        shims: *id001

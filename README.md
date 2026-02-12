@@ -1,200 +1,222 @@
-# Unified Plugin Authoring Guide for **lyenv**  
-*统一的 lyenv 插件制作技术文档* [中文](README_zh.md) / [English](README.md)
+## ✅ README.md
 
-> **Language / 语言**: 中文指南 · English Guide  
-> License: see `LICENSE` in repository root.  
-> Purpose: This README teaches **plugin authors** how to design, build, test, distribute, install, and run plugins for **lyenv**, in a robust, cross-platform, and maintainable way—without being limited to any single use case.
+# lyenv — Directory-based Isolated Environment Manager (with Visual Workflow GUI)
 
----
+**Languages:** [English](README.md) | [中文](README_zh.md)
+**Platforms:** Windows · Linux · Android (Termux)
 
-## English Guide
-
-### 1. Overview
-lyenv is a directory-based environment manager that standardizes how plugins are installed, configured, executed, and logged.
-
-**Environment layout** (created by `lyenv create/init`):
-```
-ENV_ROOT/
-├─ bin/                         # shims (e.g., myctl)
-├─ plugins/                     # plugins (one dir per install)
-│  └─ <INSTALL_NAME>/
-│     ├─ manifest.yaml|yml|json # REQUIRED
-│     ├─ config.yaml|json       # plugin-local config (optional, recommended)
-│     ├─ scripts/               # plugin scripts
-│     └─ logs/YYYY-MM-DD/       # per-command logs (JSON Lines)
-├─ workspace/                   # free use by plugins
-└─ .lyenv/
-   ├─ logs/dispatch.log         # global dispatch log
-   └─ registry/installed.yaml   # registry of installed plugins
-```
-
-**Key ideas**:
-- Manifest-first plugin design.
-- Executors: `shell` (simple logging) vs `stdio` (JSON request/response with mutations).
-- Argument passing:
-  - `shell`: `args` + user `-- ...args` appended to command line.
-  - `stdio`: user `-- ...args` appear in `req["args"]`.
-- Workdir: defaults to plugin root; override via `workdir`.
-- Config merge: `mutations` are safely merged into `lyenv.yaml` (global) and `config.yaml|json` (plugin-local).
-- Standard logs: JSON Lines per command; global dispatch log maintained by core.
+> **TL;DR**: Build workflows in the GUI (recommended). The GUI exports *real* lyenv plugins. The CLI installs/runs plugins with structured stdio JSON, logs, and config mutations.
 
 ---
 
-### 2. Manifest Spec
+## 1. What is lyenv?
 
-#### 2.1 Minimal template (YAML)
-```yaml
-name: myplugin
-version: 0.1.0
-expose: [myctl]
+**lyenv** is a directory-based environment manager and automation runtime:
 
-config:
-  local_file: ./config.yaml
-
-commands:
-  - name: run
-    summary: Example stdio command
-    executor: stdio
-    program: ./main.py
-    use_stdio: true
-    workdir: .
-```
-
-#### 2.2 Fields
-- `name`: logical name (display only); actual directory is the install name.
-- `version`: SemVer recommended.
-- `expose[]`: shim aliases; e.g., `myctl` → `ENV_ROOT/bin/myctl`.
-- `config.local_file`: plugin-local config path (relative to plugin root).
-- `commands[]`:
-  - `executor`: `shell` or `stdio`.
-  - `program`: system command (e.g., `python3`) or plugin-relative path (e.g., `./main.py`).
-  - `args[]`: fixed args.
-  - `workdir`: working dir.
-  - `env`: injected env for child process.
-  - `use_stdio`: stdio flag.
-  - `steps[]`: multi-step (shell/stdio mix), with `continue_on_error`.
+- **Environment = a directory** (`bin/`, `plugins/`, `workspace/`, `.lyenv/`)
+- **Workflow = a plugin** (manifest-driven commands)
+- **stdio JSON execution**: plugins exchange JSON via stdin/stdout (structured result/logs/mutations)
+- **GUI is a workflow compiler**: draw flows → export as multi-step stdio plugin → install/run with live logs
 
 ---
 
-### 3. Executors & Arguments
+## 2. Quick Start
 
-#### 3.1 shell
-- Core executes `bash -c "<program + args + passArgs>"`.
-- Good for simple commands without structured returns.
-- Example:
-  ```yaml
-  commands:
-    - name: hello
-      summary: Say hello from shell
-      executor: shell
-      program: echo "hello"
-      args: ["from", "shell"]
-  ```
+### 2.1 Build
 
-#### 3.2 stdio (recommended)
-- Core writes a request JSON to stdin; expects a response JSON on stdout.
-- See the Chinese section for detailed examples.
-- `mutations` are merged into global and plugin-local configs according to strategy.
-
----
-
-### 4. Plugin Directory & Scripts
-
-#### 4.1 Location
-After installation, plugin must be at `ENV_ROOT/plugins/<INSTALL_NAME>/`.  
-Manifest at plugin root is required.
-
-#### 4.2 Scripts
-- LF line endings; valid shebang; executable bit for direct scripts.
-- Avoid `awk -i inplace` (not portable). Use **temp file + sed/Python**.
-
-#### 4.3 STDIO Python script example
-```python
-#!/usr/bin/env python3
-import sys, json, time
-def main():
-    req = json.load(sys.stdin)
-    args = req.get("args") or []
-    resp = {"status":"ok","logs":[f"args={args}"],"mutations":{"plugin":{"status":{"last_run": time.strftime("%Y-%m-%dT%H:%M:%SZ")}}}}
-    print(json.dumps(resp))
-if __name__ == "__main__":
-    main()
-```
-
----
-
-### 5. Install & Run (User flow)
 ```bash
-lyenv create ./env
-lyenv init ./env
-cd ./env
-eval "$(lyenv activate)"
-
-lyenv plugin add ./plugins/myplugin --name=myplugin
-
-myctl run
-# or:
-lyenv run myplugin run -- --DRIVER=mydriver
+make build
+make build-gui
 ```
 
-Shim: Prefer `LYENV_BIN` inside shim; fallback to `lyenv` in PATH.
+CI note: if your workflow uses npm ci, you must commit package-lock.json (or shrinkwrap) because npm ci requires an existing lockfile. 4
+
+### 2.2 Create & Init an Environment
+
+```bash
+lyenv create ./demo
+lyenv init ./demo
+```
+
+### 2.3 Activate (per shell)
+
+**Linux/macOS (bash/zsh)**
+
+```bash
+eval "$(lyenv activate)"
+```
+
+**Windows PowerShell**
+
+```powershell
+lyenv activate | Invoke-Expression
+```
 
 ---
 
-### 6. Plugin Center (Unified distribution)
-- Monorepo structure `plugin-center/plugins/<NAME>/` with auto-generated `index.yaml`.
-- Install by name: `lyenv plugin install <NAME> --name=<INSTALL_NAME>`
-  - Prefer archive + sha256 if available; else use repo+subpath+ref.
+## 3. Install / Uninstall (No source repo required)
+
+`lyenv install` installs both `lyenv` and `lyenv-gui`:
+
+- Tries system bin first (e.g. `/usr/local/bin`, Termux `$PREFIX/bin`)
+- If permission denied, falls back to `~/.local/bin`
+- Windows (policy A): no automatic PATH modification; if not found, add install directory to PATH manually.
+
+**Install:**
+
+```bash
+lyenv install
+```
+
+**Uninstall:**
+
+```bash
+lyenv uninstall
+```
+
+**Optional:**
+
+```bash
+lyenv install --bindir=/usr/local/bin
+lyenv uninstall --bindir=/usr/local/bin
+```
 
 ---
 
-### 7. Multi-step, Timeout & Policies
-- `steps[]` supports shell/stdio mixing and `continue_on_error`.
-- Run options: `--timeout=<sec>`, `--fail-fast`, `--keep-going`.
+## 4. GUI (Recommended Workflow Authoring)
+
+### 4.1 Start the GUI server
+
+```bash
+lyenv gui start --open
+```
+
+Register an environment for GUI selection:
+
+```bash
+lyenv gui add ./demo --name=demo
+lyenv gui list
+```
+
+### 4.2 Build workflows visually (recommended)
+
+- Create nodes and edges (Start → ... → End)
+- Put a flow into a Group: one Group = one command
+- Click **Run**:
+  - choose which group to run
+  - input args
+  - GUI exports a temporary plugin → installs → runs → streams logs → cleans up
+
+### 4.3 Export as plugin
+
+When the flow is stable, export it as a plugin package (zip). This zip can be:
+
+- installed locally (for development), or
+- published to the plugin center (see below).
 
 ---
 
-### 8. Mutations (Config merge)
-- Strategies: `override`, `append`, `keep`.
-- Use `mutations` in stdio responses; core merges into `lyenv.yaml` and plugin-local config safely.
+## 5. Plugins and Execution Model
+
+### 5.1 Minimal plugin layout
+
+```
+plugin/
+├─ manifest.yaml|yml|json
+├─ config.yaml|json (optional)
+└─ scripts/
+   └─ ...
+```
+
+### 5.2 Executors
+
+- **shell**: simple command execution and logging
+- **stdio (recommended)**: JSON request/response via stdin/stdout
+  - supports `message` (final result), `logs`, `artifacts`, `mutations`
+  - mutations are merged safely into:
+    - global config: `lyenv.yaml`
+    - plugin local config: `plugins/<INSTALL_NAME>/config.yaml|json`
+
+### 5.3 Run a plugin
+
+```bash
+lyenv run <INSTALL_NAME> <COMMAND> -- arg1 arg2
+```
 
 ---
 
-### 9. Logs
-- Per-command logs: `plugins/<INSTALL_NAME>/logs/YYYY-MM-DD/<COMMAND>-<TIMESTAMP>.log` (JSON Lines).
-- Global dispatch: `.lyenv/logs/dispatch.log`.
-- Emit debug info about entry/args/workdir/envPATH for better diagnostics.
+## 6. Plugin Center: Install by name (supports custom versions)
+
+**Install latest:**
+
+```bash
+lyenv plugin install tester --name=tester
+```
+
+**Install a specific version:**
+
+```bash
+lyenv plugin install tester --version=0.1.0 --name=tester
+```
+
+**Sugar syntax:**
+
+```bash
+lyenv plugin install tester@0.1.0 --name=tester
+```
 
 ---
 
-### 10. CI: Index & Archive (with SHA‑256)
-- Center CI packs `artifacts/<NAME>-<VERSION>.zip`, computes SHA‑256, updates `index.yaml`, and opens a PR using a PAT secret.
-- Client verifies archive SHA‑256 before installation.
+## 7. Publishing Plugins to the Center (Developer Guide)
+
+This project uses a plugin center monorepo:
+
+- plugin source lives in `plugins/<NAME>/`
+- plugin zip archives are published as GitHub Release assets under a fixed tag `artifacts` using a release upload action. 2 3
+- `index.yaml` contains source + sha256 per version and is updated by CI
+
+### 7.1 Upload (publish) workflow (what developers do)
+
+1. Prepare a plugin directory (GUI-exported zip or hand-written plugin)
+2. Add plugin source to the center repo at:  
+   `plugins/<NAME>/`  
+   `manifest.yaml`  
+   `...`
+3. Open a PR to center repo `main` **with source files only** (do NOT commit zip artifacts)
+4. After merge, CI will:
+   - package `plugins/<NAME>` into `<NAME>-<VERSION>.zip`
+   - upload zip to GitHub Release assets (tag=`artifacts`) 2 3
+   - update `index.yaml` and open a PR
+5. Merge the `index.yaml` PR to publish
+
+### 7.2 Contributing guide
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for:
+
+- local testing
+- sparse checkout (no full repo clone)
+- CI rules and versioning
 
 ---
 
-### 11. Troubleshooting
-- **Wrong directory**: ensure plugin is at `ENV_ROOT/plugins/<INSTALL_NAME>/`.
-- **Missing args**:
-  - `shell`: use positional `$1 $2 ...`.
-  - `stdio`: read `req["args"]`.
-- **Config not parsed**: rely on `config.local_file` and stdio `mutations`.
-- **Shebang/LF**: ensure proper shebang and executable bit; `python3` in PATH.
-- **Avoid `awk -i inplace`**: use temp file pattern.
-- **lyenv not found**: use `LYENV_BIN` in shim or add `dist/` to PATH.
-- **Timeout & policy**: use `--timeout`, `--fail-fast`, `--keep-going`.
+## 8. Release Automation (this repo)
+
+Releases are built by GitHub Actions on tag push using a build matrix (OS/arch combinations). The matrix strategy is a standard GitHub Actions feature. 1  
+Release assets are uploaded using a GitHub Release action. 2 3  
+Build artifacts are typically collected via artifact upload/download actions. 5 6
 
 ---
 
-### 12. Author Checklist
-- [ ] Create `plugins/<NAME>/`.
-- [ ] Write `manifest.yaml|json` (prefer `stdio`).
-- [ ] Write scripts (English comments, LF, executable, portable edits).
-- [ ] Provide `config.yaml|json`.
-- [ ] Local test: `lyenv plugin add` & `lyenv run` with args.
-- [ ] Push to center repo; CI generates `index.yaml` & artifacts.
-- [ ] End-user install by name from center.
+## 9. Logs
+
+- Global dispatch log: `.lyenv/logs/dispatch.log`
+- Per-run log: `.lyenv/logs/dispatch/<DISPATCH_ID>.log`
+- Plugin logs: `plugins/<INSTALL_NAME>/logs/YYYY-MM-DD/...`
 
 ---
 
-**End**
+## 10. License
+
+See [LICENSE](LICENSE).
+
+---

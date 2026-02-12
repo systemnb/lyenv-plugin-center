@@ -123,6 +123,10 @@ cd lyenv-plugin-center
 git sparse-checkout init --cone
 git sparse-checkout set plugins/<NAME> .github/scripts index.yaml
 git checkout main
+cp -r /path/to/myplugin plugins/myplugin
+git add plugins/myplugin
+git commit -m "feat(plugin): add myplugin 0.1.0"
+git push origin main
 ```
 
 ### 3.4 Install from center (verify)

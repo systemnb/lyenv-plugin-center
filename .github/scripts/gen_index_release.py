@@ -57,16 +57,16 @@ def main():
         print("plugins dir not found", file=sys.stderr)
         sys.exit(1)
 
-    if not REPO:
-        # fallback (still usable, but better set env)
-        REPO = "systemnb/lyenv-plugin-center"
+    # Use local variables to avoid Python scoping issues
+    repo = os.environ.get("REPO_FULL_NAME", "").strip() or "systemnb/lyenv-plugin-center"
+    release_tag = os.environ.get("RELEASE_TAG", "artifacts").strip() or "artifacts"
+    default_ref = os.environ.get("DEFAULT_REF", "main").strip() or "main"
 
     os.makedirs(OUT_DIR, exist_ok=True)
 
     index_path = os.path.join(ROOT, "index.yaml")
     index = load_existing_index(index_path)
 
-    # update timestamp (required by your decision 2Y)
     index["updatedAt"] = datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
 
     for name in sorted(os.listdir(PLUGINS_DIR)):
@@ -95,24 +95,17 @@ def main():
         zip_dir(sub, zip_path)
         digest = sha256_file(zip_path)
 
-        # GitHub release asset download URL
-        source_url = f"https://github.com/{REPO}/releases/download/{RELEASE_TAG}/{zip_name}"
+        source_url = f"https://github.com/{repo}/releases/download/{release_tag}/{zip_name}"
 
-        # base entry
         entry = index["plugins"].get(name) or {}
         entry["desc"] = entry.get("desc") or desc
-        entry["repo"] = entry.get("repo") or REPO
+        entry["repo"] = entry.get("repo") or repo
         entry["subpath"] = entry.get("subpath") or f"plugins/{name}"
-        entry["ref"] = entry.get("ref") or DEFAULT_REF
+        entry["ref"] = entry.get("ref") or default_ref
         entry["shims"] = expose
 
         versions = entry.get("versions") or {}
-        # merge versions: keep old + update this version
-        versions[version] = {
-            "source": source_url,
-            "sha256": digest,
-            "shims": expose,
-        }
+        versions[version] = {"source": source_url, "sha256": digest, "shims": expose}
         entry["versions"] = versions
 
         index["plugins"][name] = entry
@@ -121,8 +114,8 @@ def main():
 
     with open(index_path, "w", encoding="utf-8") as f:
         yaml.safe_dump(index, f, sort_keys=False)
+
     print(f"Updated index.yaml: {index_path}")
     print(f"Artifacts output: {OUT_DIR}")
-
 if __name__ == "__main__":
     main()

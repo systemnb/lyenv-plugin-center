@@ -118,7 +118,7 @@ The plugin center is a monorepo:
 If the center repo grows large, use sparse checkout to work only on your plugin folder:
 
 ```bash
-git clone --filter=blob:none --no-checkout https://github.com/<ORG>/lyenv-plugin-center.git
+git clone --filter=blob:none --no-checkout https://github.com/systemnb/lyenv-plugin-center.git
 cd lyenv-plugin-center
 git sparse-checkout init --cone
 git sparse-checkout set plugins/<NAME> .github/scripts index.yaml

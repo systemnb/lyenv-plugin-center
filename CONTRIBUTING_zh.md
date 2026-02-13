@@ -69,7 +69,7 @@ lyenv gui add . --name=demo
 
 ### 1.2 工作流整体结构
 
-> Put picture here
+![](gui-workflow-overview.png)
 
 最小工作流结构：  
 `Start` → `Node` → `End`
@@ -82,7 +82,7 @@ lyenv gui add . --name=demo
 
 ### 1.3 端口与数据流（非常重要）
 
-> Put picture here
+![](gui-ports-and-wiring.png)
 
 示例连线：  
 `Start.name → Greet.name`  
@@ -148,7 +148,7 @@ print(f"Hello, {name}!")
 
 ### 2.6 在 GUI 中运行
 
-> Put picture here
+![](gui-run-flow.png)
 
 运行步骤：
 1. 点击 `Run`
@@ -164,7 +164,7 @@ Hello, Alice!
 
 ## 3）导出为插件并用 CLI 验证
 
-> Put picture here
+![](gui-export-plugin.png)
 
 导出插件后：
 ```bash

@@ -74,7 +74,7 @@ lyenv gui add . --name=demo
 
 ### 1.2 Workflow Overview
 
-> Put picture here
+![](gui-workflow-overview.png)
 
 A minimal workflow consists of:  
 `Start` → `Node(s)` → `End`
@@ -89,7 +89,7 @@ Execution always flows left to right.
 
 ### 1.3 Ports and Data Flow (Very Important)
 
-> Put picture here
+![](gui-ports-and-wiring.png)
 
 Nodes exchange data through named ports.  
 Example wiring:  
@@ -161,7 +161,7 @@ Name the command: `run`
 
 ### 2.6 Run in GUI
 
-> Put picture here
+![](gui-run-flow.png)
 
 Steps:
 1. Click `Run`
@@ -184,7 +184,7 @@ The GUI automatically:
 
 ## 3) Export as Plugin and Verify via CLI
 
-> Put picture here
+![](gui-export-plugin.png)
 
 Export the workflow as a plugin.  
 Install locally:

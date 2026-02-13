@@ -1,166 +1,299 @@
-# Contributing to lyenv (Plugins + GUI workflows)
+# Contributing to lyenv (Plugins + GUI Workflows)
 
-Thanks for contributing! This guide explains how to:
-- develop plugins (recommended: GUI workflows)
-- test locally in a lyenv environment
-- publish plugins to the plugin center (Release-assets model)
+Thanks for contributing to **lyenv**!
 
----
-
-## 1) Recommended: Author workflows in the GUI
-
-### Run GUI
-
-```bash
-lyenv gui start --open
-```
-
-Register an env directory:
-
-```bash
-lyenv gui add ./demo --name=demo
-```
-
-### Build & Run a workflow
-
-1. Create nodes (Start → ... → End)
-2. Put nodes into a **Group** — one Group = one command
-3. Click **Run**, pick group, enter args
-4. The GUI will export → install → run → stream logs → cleanup automatically
-
-When stable, export the workflow as a plugin zip and publish it.
+This document explains how to:
+- create plugins using the **GUI (recommended)**
+- understand **how data flows between nodes**
+- export workflows as **standard lyenv plugins**
+- write plugins **without the GUI** (advanced)
+- publish plugins to the **Plugin Center** (Release-assets model)
 
 ---
 
-## 2) Hand-writing plugins (supported)
+## 0) Quick Glossary
 
-### Minimal layout
+**Environment (env)**  
+A directory created by `lyenv create/init`, containing:
+`bin/`, `plugins/`, `workspace/`, `.lyenv/`, and `lyenv.yaml`.
 
-```
-plugins/<NAME>/
-├─ manifest.yaml|yml|json
-├─ scripts/
-│  └─ ...
-└─ config.yaml|json (optional)
-```
+**Plugin**  
+A folder under `env/plugins/<INSTALL_NAME>/` with a manifest and scripts.
 
-### Local test
+**Workflow**  
+A visual graph (nodes + edges) built in the GUI.  
+When exported, it becomes a **real lyenv plugin**.
 
-Create a local env:
+**Group**  
+A GUI Group defines **one executable command**.
+> **One Group = one command**
+
+**Ports**  
+Nodes exchange data through named ports:
+- Output port → produces data
+- Input port → consumes data
+
+---
+
+## 1) Recommended: Author Plugins via the GUI (Workflow-first)
+
+The lyenv GUI is **not a separate runtime**.  
+It is a **visual workflow compiler** that exports real, portable plugins.
+
+> **Workflow = Plugin**  
+> **Group = Command**  
+> **Node = stdio Step**
+
+---
+
+### 1.1 Setup (One-time)
 
 ```bash
-lyenv create ./env
-lyenv init ./env
-cd ./env
+lyenv create ./demo
+lyenv init ./demo
+cd ./demo
 ```
 
-Activate:
-
-**Linux/macOS (bash/zsh):**
-
+**Activate:**  
+Linux/macOS  
 ```bash
 eval "$(lyenv activate)"
 ```
-
-**Windows PowerShell:**
-
+Windows PowerShell  
 ```powershell
 lyenv activate | Invoke-Expression
 ```
 
-Install plugin from local folder:
-
+**Start GUI and register the env:**  
 ```bash
-lyenv plugin add /abs/path/to/plugin --name=<INSTALL_NAME>
-```
-
-Run:
-
-```bash
-lyenv run <INSTALL_NAME> run -- arg1 arg2
+lyenv gui start --open
+lyenv gui add . --name=demo
 ```
 
 ---
 
-## 3) Publishing plugins to the Plugin Center (Release-assets model)
+### 1.2 Workflow Overview
 
-The plugin center is a monorepo:
+> Put picture here
 
-- plugin source: `plugins/<NAME>/`
-- zips are uploaded as GitHub Release assets under fixed tag `artifacts` by CI 2 3
-- `index.yaml` is updated by CI to include source + sha256 per version
+A minimal workflow consists of:  
+`Start` → `Node(s)` → `End`
 
-### 3.1 What you commit
+- `Start`: receives CLI arguments  
+- `Node`: executes real programs  
+- `End`: produces the final result  
 
-✅ Commit plugin source **only** under:  
-`plugins/<NAME>/`  
-`manifest.yaml`  
-`scripts/...`  
-`config.yaml` (optional)
+Execution always flows left to right.
 
-❌ Do **NOT** commit zip artifacts.
+---
 
-### 3.2 PR flow (recommended)
+### 1.3 Ports and Data Flow (Very Important)
 
+> Put picture here
+
+Nodes exchange data through named ports.  
+Example wiring:  
+`Start.name ──▶ Greet.name`  
+`Greet.greeting ──▶ End.greeting`
+
+At runtime:
+- Start maps CLI args to its output ports
+- Nodes read inputs via wiring
+- Nodes execute programs
+- Outputs are written back to wiring
+- End reads final values and returns result
+
+⚠️ If a port is not connected, downstream nodes receive empty values.
+
+---
+
+## 2) Hands-on GUI Test Case: “Hello, <name>!”
+
+Expected output:  
+```
+Hello, Alice!
+```
+
+### 2.1 Build the Graph
+
+Create three nodes:
+- `Start`
+- `Node` (label: `Greet`)
+- `End`
+
+### 2.2 Define Ports
+
+**Start**
+- Output ports: `name`
+
+**Greet**
+- Input ports: `name`
+- Output ports: `greeting`
+
+**End**
+- Input ports: `greeting`
+
+### 2.3 Connect Nodes
+- `Start.name` → `Greet.name`
+- `Greet.greeting` → `End.greeting`
+
+### 2.4 Configure the Greet Node Program
+
+Example Python logic:
+```python
+import sys
+name = sys.argv[1] if len(sys.argv) > 1 else "world"
+print(f"Hello, {name}!")
+```
+
+Notes:
+- Do not hardcode `python3`
+- Exported runners use `sys.executable` for portability
+
+### 2.5 Create a Group (One Group = One Command)
+
+Create a Group containing:
+- Start
+- Greet
+- End
+
+Name the command: `run`
+
+### 2.6 Run in GUI
+
+> Put picture here
+
+Steps:
+1. Click `Run`
+2. Select Group `run`
+3. Input args: `Alice`
+
+Final output:
+```
+Hello, Alice!
+```
+
+The GUI automatically:
+- exports a temporary plugin
+- installs it
+- runs it
+- streams logs
+- cleans up
+
+---
+
+## 3) Export as Plugin and Verify via CLI
+
+> Put picture here
+
+Export the workflow as a plugin.  
+Install locally:
+```bash
+lyenv plugin add /path/to/exported-plugin --name=hello-demo
+```
+
+Run via CLI:
+```bash
+lyenv run hello-demo run -- Alice
+```
+
+Expected:
+```
+Hello, Alice!
+```
+
+---
+
+## 4) Writing Plugins Without the GUI (Advanced)
+
+GUI is recommended, but direct plugin development is supported.
+
+### 4.1 Minimal Plugin Layout
+
+```
+plugins/<NAME>/
+├─ manifest.yaml
+├─ scripts/
+│  └─ main.py
+└─ config.yaml (optional)
+```
+
+### 4.2 Example `manifest.yaml`
+
+```yaml
+name: hello-cli
+version: 0.1.0
+expose: [run]
+
+commands:
+  - name: run
+    executor: stdio
+    program: ./scripts/main.py
+```
+
+### 4.3 Example stdio script
+
+```python
+from lyenv_sdk import read_request, respond_ok
+
+req = read_request()
+args = req.get("args", [])
+name = args[0] if args else "world"
+respond_ok(f"Hello, {name}!")
+```
+
+This approach is more flexible, but you must:
+- manage wiring manually
+- handle inputs/outputs yourself
+
+---
+
+## 5) Publishing to the Plugin Center (Release-assets Model)
+
+✅ **Commit source only:**
+```
+plugins/<NAME>/
+  manifest.yaml
+  scripts/
+  config.yaml (optional)
+```
+
+❌ **Do NOT commit zip artifacts.**
+
+**PR flow:**
 1. Fork the plugin center repo
 2. Add/modify `plugins/<NAME>/...`
-3. Bump version in the plugin manifest
-4. Open a PR to `main`
-5. After merge, CI will:
-   - build `<NAME>-<VERSION>.zip`
-   - upload it to Release assets (tag=`artifacts`) 2 3
-   - update `index.yaml` (keeping historical versions)
-   - open an automatic PR for `index.yaml`
-6. You then merge the `index.yaml` PR to publish
+3. Bump version in `manifest.yaml`
+4. Open PR to `main`
 
-### 3.3 Contributing without cloning the whole center repo (sparse checkout)
+After merge, CI will:
+- build `<NAME>-<VERSION>.zip`
+- upload it as GitHub Release assets (tag=artifacts)
+- update `index.yaml`
+- open an automatic PR
 
-If the center repo grows large, use sparse checkout to work only on your plugin folder:
-
-```bash
-git clone --filter=blob:none --no-checkout https://github.com/systemnb/lyenv-plugin-center.git
-cd lyenv-plugin-center
-git sparse-checkout init --cone
-git sparse-checkout set plugins/<NAME> .github/scripts index.yaml
-git checkout main
-cp -r /path/to/myplugin plugins/myplugin
-git add plugins/myplugin
-git commit -m "feat(plugin): add myplugin 0.1.0"
-git push origin main
-```
-
-### 3.4 Install from center (verify)
-
-Users can install:
-
-**latest:**
-
-```bash
-lyenv plugin install <NAME> --name=<INSTALL_NAME>
-```
-
-**specific version:**
-
-```bash
-lyenv plugin install <NAME> --version=0.1.0 --name=<INSTALL_NAME>
-lyenv plugin install <NAME>@0.1.0 --name=<INSTALL_NAME>
-```
+Merge the `index.yaml` PR to publish.
 
 ---
 
-## 4) CI notes
+## 6) Troubleshooting
 
-- If your CI uses `npm ci`, ensure `package-lock.json` exists and is committed, because `npm ci` requires an existing lockfile. 4
-- Release pipelines often build multiple OS/arch targets using the GitHub Actions matrix strategy. 1
-- Build artifacts can be uploaded/downloaded with artifact actions. 5 6
+| Issue | Solution |
+|-------|----------|
+| `node failed` | check `scripts/runner_<NODE>.py`<br>inspect stderr in GUI logs |
+| **Windows issues** | ensure Python is installed<br>rely on `sys.executable`<br>avoid OS-specific shell commands |
+| **Empty data** | most often caused by missing edges<br>verify port connections |
 
 ---
 
-## 5) Style and portability checklist
+## 7) Style & Portability Checklist
 
-- LF line endings for scripts
-- Shebang + executable bit when needed
-- Avoid non-portable inline editing (e.g. `awk -i inplace`)
-- Prefer stdio JSON executor for structured results
+- [ ] LF line endings
+- [ ] Avoid OS-specific tools
+- [ ] Prefer `sys.executable` for Python
+- [ ] Keep nodes stateless
+- [ ] Validate wiring visually in GUI
 
-Thanks again!
+Thanks for contributing to lyenv 🚀
+
+---

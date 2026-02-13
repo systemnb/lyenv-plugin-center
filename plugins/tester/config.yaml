@@ -1,8 +1,8 @@
 flow:
     outputs:
         N_1770791227823_ia3t:
-            greeting: Hello, systemnb
+            greeting: Hello, test
         N_1770791229861_vdop:
-            final: Hello, systemnb!
+            final: Hello, test!
         START_1770791214742_3xw4:
-            name: "systemnb"
+            name: test

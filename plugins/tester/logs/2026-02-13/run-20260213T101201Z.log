@@ -1,0 +1,17 @@
+{"level":"info","message":"Plugin resolved: name=tester install=tester dir=plugins/tester\n","ts":"2026-02-13T10:12:01Z"}
+{"action":"run","args":["test"],"dispatch_id":"d_1770977521005738503_84982","keepGoing":false,"level":"info","message":"dispatch start","timeout":0,"ts":"2026-02-13T10:12:01Z"}
+{"dispatch_id":"d_1770977521005738503_84982","level":"info","message":"multi-step command start","steps":4,"ts":"2026-02-13T10:12:01Z"}
+{"args":null,"continue_on_error":false,"dispatch_id":"d_1770977521005738503_84982","executor":"stdio","level":"info","message":"step start","program":"./scripts/start_runner.py","step_index":0,"ts":"2026-02-13T10:12:01Z"}
+{"argv":["/usr/bin/python3","/workspace/demo/plugins/tester/scripts/start_runner.py"],"cmd":"/usr/bin/python3","entry":"/workspace/demo/plugins/tester/scripts/start_runner.py","level":"debug","message":"spawn stdio","ts":"2026-02-13T10:12:01Z","workdir":"/workspace/demo/plugins/tester"}
+{"dispatch_id":"d_1770977521005738503_84982","duration_ms":19,"exit_code":0,"level":"info","message":"step end","step_index":0,"ts":"2026-02-13T10:12:01Z"}
+{"args":null,"continue_on_error":false,"dispatch_id":"d_1770977521005738503_84982","executor":"stdio","level":"info","message":"step start","program":"./scripts/runner_N_1770791227823_ia3t.py","step_index":1,"ts":"2026-02-13T10:12:01Z"}
+{"argv":["/usr/bin/python3","/workspace/demo/plugins/tester/scripts/runner_N_1770791227823_ia3t.py"],"cmd":"/usr/bin/python3","entry":"/workspace/demo/plugins/tester/scripts/runner_N_1770791227823_ia3t.py","level":"debug","message":"spawn stdio","ts":"2026-02-13T10:12:01Z","workdir":"/workspace/demo/plugins/tester"}
+{"dispatch_id":"d_1770977521005738503_84982","duration_ms":30,"exit_code":0,"level":"info","message":"step end","step_index":1,"ts":"2026-02-13T10:12:01Z"}
+{"args":null,"continue_on_error":false,"dispatch_id":"d_1770977521005738503_84982","executor":"stdio","level":"info","message":"step start","program":"./scripts/runner_N_1770791229861_vdop.py","step_index":2,"ts":"2026-02-13T10:12:01Z"}
+{"argv":["/usr/bin/python3","/workspace/demo/plugins/tester/scripts/runner_N_1770791229861_vdop.py"],"cmd":"/usr/bin/python3","entry":"/workspace/demo/plugins/tester/scripts/runner_N_1770791229861_vdop.py","level":"debug","message":"spawn stdio","ts":"2026-02-13T10:12:01Z","workdir":"/workspace/demo/plugins/tester"}
+{"dispatch_id":"d_1770977521005738503_84982","duration_ms":30,"exit_code":0,"level":"info","message":"step end","step_index":2,"ts":"2026-02-13T10:12:01Z"}
+{"args":null,"continue_on_error":false,"dispatch_id":"d_1770977521005738503_84982","executor":"stdio","level":"info","message":"step start","program":"./scripts/end_runner.py","step_index":3,"ts":"2026-02-13T10:12:01Z"}
+{"argv":["/usr/bin/python3","/workspace/demo/plugins/tester/scripts/end_runner.py"],"cmd":"/usr/bin/python3","entry":"/workspace/demo/plugins/tester/scripts/end_runner.py","level":"debug","message":"spawn stdio","ts":"2026-02-13T10:12:01Z","workdir":"/workspace/demo/plugins/tester"}
+{"dispatch_id":"d_1770977521005738503_84982","duration_ms":17,"exit_code":0,"level":"info","message":"step end","step_index":3,"ts":"2026-02-13T10:12:01Z"}
+{"dispatch_id":"d_1770977521005738503_84982","level":"info","message":"multi-step command end","ts":"2026-02-13T10:12:01Z"}
+{"dispatch_id":"d_1770977521005738503_84982","level":"info","message":"Plugin log: plugins/tester/logs/2026-02-13/run-20260213T101201Z.log","ts":"2026-02-13T10:12:01Z"}

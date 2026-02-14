@@ -301,4 +301,113 @@ Merge the index PR to publish.
 
 ---
 
+## 8) Working with Large Plugin Repositories (Partial Clone)
+
+As the plugin-center repository grows, **cloning the entire repository can become slow and unnecessary**, especially when you only want to add or update **one plugin**.
+
+To improve contributor experience, we strongly recommend using **Git partial clone and sparse checkout**.
+
+---
+
+### 8.1 Recommended: Sparse Checkout (Git ≥ 2.25)
+
+This allows you to fetch **only the files you need**.
+
+#### Step 1: Clone without checking out files
+
+```bash
+git clone --filter=blob:none --no-checkout https://github.com/<ORG>/<PLUGIN-CENTER-REPO>.git
+cd <PLUGIN-CENTER-REPO>
+```
+
+#### Step 2: Enable sparse checkout
+
+```bash
+git sparse-checkout init --cone
+```
+
+#### Step 3: Checkout only what you need
+
+For example, to work on a single plugin:
+
+```bash
+git sparse-checkout set plugins/my-plugin
+git checkout main
+```
+
+Or if you also need the index file:
+
+```bash
+git sparse-checkout set plugins/my-plugin index.yaml
+git checkout main
+```
+
+✅ **Result:**
+
+- Only `plugins/my-plugin/` (and optionally `index.yaml`) are downloaded
+- No need to fetch the full repository history or all plugin files
+
+---
+
+### 8.2 Updating an Existing Plugin (Lightweight Workflow)
+
+```bash
+git sparse-checkout set plugins/my-plugin
+git checkout main
+# edit files
+git add plugins/my-plugin
+git commit -m "Update my-plugin: fix inputs/outputs"
+git push origin my-branch
+```
+
+Open a Pull Request as usual.
+
+---
+
+### 8.3 Adding a New Plugin (Minimal Files)
+
+When adding a new plugin, only commit source files:
+
+```
+plugins/my-plugin/
+  manifest.yaml
+  scripts/
+  config.yaml (optional)
+```
+
+❌ **Do NOT commit:**
+
+- zip artifacts
+- build outputs
+- generated files
+
+Artifacts are built automatically by CI and uploaded as GitHub Release assets.
+
+---
+
+### 8.4 Alternative: Shallow Clone (Less Recommended)
+
+If sparse checkout is not available, you may use a shallow clone:
+
+```bash
+git clone --depth=1 https://github.com/<ORG>/<PLUGIN-CENTER-REPO>.git
+```
+
+⚠️ This still downloads the full tree and is less efficient than sparse checkout.
+
+---
+
+### 8.5 Why This Matters
+
+Using sparse checkout:
+
+- reduces clone time dramatically
+- lowers disk usage
+- makes contributing feasible even on slow networks
+- scales better as the plugin ecosystem grows
+
+We highly encourage all contributors to adopt this workflow.
+
+---
+
 Thanks again for contributing to lyenv 🚀

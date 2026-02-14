@@ -287,4 +287,113 @@ plugins/<NAME>/
 
 ---
 
+## 8）大型插件仓库的轻量贡献方式（无需完整克隆）
+
+随着插件中心不断增长，**完整 clone 整个仓库会变得非常慢且没有必要**，尤其是当你只想新增或修改 **一个插件** 时。
+
+为提升贡献体验，**强烈推荐使用 Git 的「稀疏检出（Sparse Checkout）」机制**。
+
+---
+
+### 8.1 推荐方式：Sparse Checkout（Git ≥ 2.25）
+
+这种方式可以 **只下载你真正需要的目录**。
+
+#### 步骤 1：不检出文件地克隆仓库
+
+```bash
+git clone --filter=blob:none --no-checkout https://github.com/<组织>/<插件中心仓库>.git
+cd <插件中心仓库>
+```
+
+#### 步骤 2：启用稀疏检出
+
+```bash
+git sparse-checkout init --cone
+```
+
+#### 步骤 3：只检出你需要的内容
+
+例如，只操作一个插件：
+
+```bash
+git sparse-checkout set plugins/my-plugin
+git checkout main
+```
+
+如果你还需要修改 `index.yaml`：
+
+```bash
+git sparse-checkout set plugins/my-plugin index.yaml
+git checkout main
+```
+
+✅ **结果：**
+
+- 本地只会存在 `plugins/my-plugin/`（以及可选的 `index.yaml`）
+- 不需要下载整个仓库的历史和所有插件
+
+---
+
+### 8.2 更新已有插件（轻量流程）
+
+```bash
+git sparse-checkout set plugins/my-plugin
+git checkout main
+# 修改文件
+git add plugins/my-plugin
+git commit -m "Update my-plugin: fix inputs/outputs"
+git push origin my-branch
+```
+
+然后正常创建 Pull Request 即可。
+
+---
+
+### 8.3 新增插件（最小提交内容）
+
+新增插件时，只提交源文件：
+
+```
+plugins/my-plugin/
+  manifest.yaml
+  scripts/
+  config.yaml（可选）
+```
+
+❌ **不要提交：**
+
+- zip 包
+- 构建产物
+- 自动生成文件
+
+这些内容会由 CI 自动构建并上传到 GitHub Release。
+
+---
+
+### 8.4 备选方案：浅克隆（不太推荐）
+
+如果 Git 版本较旧，也可以使用浅克隆：
+
+```bash
+git clone --depth=1 https://github.com/<组织>/<插件中心仓库>.git
+```
+
+⚠️ 但这种方式仍然会下载完整目录结构，不如 sparse checkout 高效。
+
+---
+
+### 8.5 为什么要这样做？
+
+使用 sparse checkout 可以：
+
+- 极大缩短 clone 时间
+- 减少磁盘占用
+- 在网络条件一般的情况下也能顺利贡献
+- 随着插件数量增长仍能保持良好体验
+
+我们强烈建议贡献者采用这种方式参与插件开发。
+
+---
+
 感谢你的贡献 🚀

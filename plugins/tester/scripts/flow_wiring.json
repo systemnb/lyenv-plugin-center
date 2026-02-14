@@ -1,20 +1,24 @@
 {
-  "N_1770791227823_ia3t": {
-    "name": {
-      "node": "START_1770791214742_3xw4",
-      "port": "name"
+  "N_1771048651464_n6w5": {
+    "key": {
+      "node": "START_1771048631946_ce17",
+      "port": "key"
+    },
+    "val": {
+      "node": "START_1771048631946_ce17",
+      "port": "val"
     }
   },
-  "N_1770791229861_vdop": {
-    "greeting": {
-      "node": "N_1770791227823_ia3t",
-      "port": "greeting"
+  "N_1771048653247_brrc": {
+    "key": {
+      "node": "N_1771048651464_n6w5",
+      "port": "key"
     }
   },
-  "END_1770791219397_h6sf": {
-    "final": {
-      "node": "N_1770791229861_vdop",
-      "port": "final"
+  "END_1771048634311_uprn": {
+    "result": {
+      "node": "N_1771048653247_brrc",
+      "port": "val"
     }
   }
 }

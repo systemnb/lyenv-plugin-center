@@ -1,5 +1,5 @@
 name: tester
-version: 0.1.1
+version: 0.1.2
 expose:
   - tester
 config:
@@ -13,11 +13,11 @@ commands:
         workdir: .
         use_stdio: true
       - executor: stdio
-        program: ./scripts/runner_N_1770791227823_ia3t.py
+        program: ./scripts/runner_N_1771048651464_n6w5.py
         workdir: .
         use_stdio: true
       - executor: stdio
-        program: ./scripts/runner_N_1770791229861_vdop.py
+        program: ./scripts/runner_N_1771048653247_brrc.py
         workdir: .
         use_stdio: true
       - executor: stdio

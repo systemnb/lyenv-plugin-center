@@ -1,8 +1,11 @@
 flow:
     outputs:
-        N_1770791227823_ia3t:
-            greeting: Hello, test
-        N_1770791229861_vdop:
-            final: Hello, test!
-        START_1770791214742_3xw4:
-            name: test
+        N_1771048651464_n6w5:
+            key: foo
+        N_1771048653247_brrc:
+            val: bar
+        START_1771048631946_ce17:
+            key: foo
+            val: bar
+kv:
+    foo: bar

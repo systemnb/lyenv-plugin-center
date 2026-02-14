@@ -1,5 +1,5 @@
 apiVersion: v1
-updatedAt: '2026-02-13T10:21:17Z'
+updatedAt: '2026-02-14T07:18:28Z'
 plugins:
   tester:
     desc: tester
@@ -17,4 +17,9 @@ plugins:
       0.1.1:
         source: https://github.com/systemnb/lyenv-plugin-center/releases/download/artifacts/tester-0.1.1.zip
         sha256: c2e6e5bf7bb0c763e9fe8dccd1a051bb8d6537223659cc856ae2fdd4f9e41a2f
+        shims:
+        - tester
+      0.1.2:
+        source: https://github.com/systemnb/lyenv-plugin-center/releases/download/artifacts/tester-0.1.2.zip
+        sha256: f283dd06d53b41d0c0372b83062ca2a296d56e292c8dfcc04f6f502fa44309b5
         shims: *id001

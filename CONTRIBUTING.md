@@ -1,52 +1,48 @@
-# Contributing to lyenv (Plugins + GUI Workflows)
+# Contributing to lyenv (GUI Workflows + Plugins)
 
-Thanks for contributing to **lyenv**!
+Thanks for contributing to **lyenv**!  
+This guide focuses on the **GUI-first workflow experience**, including:
 
-This document explains how to:
-- create plugins using the **GUI (recommended)**
-- understand **how data flows between nodes**
-- export workflows as **standard lyenv plugins**
-- write plugins **without the GUI** (advanced)
-- publish plugins to the **Plugin Center** (Release-assets model)
+- how data moves between nodes (ports + wiring)
+- how to write node code using the **Hybrid Node Runtime**
+- a complete example you can reproduce: **KV Set → KV Get**
+- how to export and publish plugins to the Plugin Center
 
----
-
-## 0) Quick Glossary
-
-**Environment (env)**  
-A directory created by `lyenv create/init`, containing:
-`bin/`, `plugins/`, `workspace/`, `.lyenv/`, and `lyenv.yaml`.
-
-**Plugin**  
-A folder under `env/plugins/<INSTALL_NAME>/` with a manifest and scripts.
-
-**Workflow**  
-A visual graph (nodes + edges) built in the GUI.  
-When exported, it becomes a **real lyenv plugin**.
-
-**Group**  
-A GUI Group defines **one executable command**.
-> **One Group = one command**
-
-**Ports**  
-Nodes exchange data through named ports:
-- Output port → produces data
-- Input port → consumes data
+![](gui-overview.png)
 
 ---
 
-## 1) Recommended: Author Plugins via the GUI (Workflow-first)
+## 0) Key Ideas (Read First)
 
-The lyenv GUI is **not a separate runtime**.  
-It is a **visual workflow compiler** that exports real, portable plugins.
+### 0.1 Workflow model
+- **Workflow = Plugin**
+- **Group = Command**
+- **Nodes = Steps**
+- **Edges = Data dependencies**
 
-> **Workflow = Plugin**  
-> **Group = Command**  
-> **Node = stdio Step**
+### 0.2 Dataflow model (the important part)
+Nodes exchange data through **ports**:
+
+- **Output ports** produce values
+- **Input ports** consume values
+- A connection means:  
+  `Upstream.output_port → Downstream.input_port`
+
+At runtime, values are stored in a flow “bus”:
+
+```
+flow.outputs.<node_id>.<port_name>
+```
+
+The GUI exporter generates a wiring map (`flow_wiring.json`) so each node can resolve its inputs from upstream outputs.
+
+![](gui-ports.png)
 
 ---
 
-### 1.1 Setup (One-time)
+## 1) Setup (One-time)
+
+Create an env:
 
 ```bash
 lyenv create ./demo
@@ -54,17 +50,19 @@ lyenv init ./demo
 cd ./demo
 ```
 
-**Activate:**  
-Linux/macOS  
-```bash
-eval "$(lyenv activate)"
-```
-Windows PowerShell  
-```powershell
-lyenv activate | Invoke-Expression
-```
+Activate:
 
-**Start GUI and register the env:**  
+- **Linux/macOS**:
+  ```bash
+  eval "$(lyenv activate)"
+  ```
+- **Windows PowerShell**:
+  ```powershell
+  lyenv activate | Invoke-Expression
+  ```
+
+Start GUI and register env:
+
 ```bash
 lyenv gui start --open
 lyenv gui add . --name=demo
@@ -72,185 +70,192 @@ lyenv gui add . --name=demo
 
 ---
 
-### 1.2 Workflow Overview
+## 2) Hybrid Node Runtime (Most Important)
 
-![](gui-workflow-overview.png)
+lyenv GUI uses a **Hybrid Node Runtime** so node authors can choose between two styles, but the node type does not split.
 
-A minimal workflow consists of:  
-`Start` → `Node(s)` → `End`
+### 2.1 Simple style (recommended for 80% nodes)
 
-- `Start`: receives CLI arguments  
-- `Node`: executes real programs  
-- `End`: produces the final result  
+- Inputs come from `argv` (port order)
+- Outputs go to `stdout`
+- For multi-output: print a JSON array: `["o1","o2"]`
 
-Execution always flows left to right.
+Example (`simple_node.py`):
+
+```python
+import sys, json
+a = sys.argv[1] if len(sys.argv) > 1 else ""
+b = sys.argv[2] if len(sys.argv) > 2 else ""
+print(json.dumps([a.upper(), b.lower()], ensure_ascii=False))
+```
+
+### 2.2 Advanced style (when you need config/mutations/artifacts)
+
+- You can call `read_request()` in the node script
+- You can use `mutate` / `config_plugin` / `emit_artifact` / `log`
+- You can return a full stdio JSON response via `respond_ok` / `respond_error`
+- To map outputs reliably to ports, return:
+
+```python
+respond_ok("", extra={"outputs": ["out1", "out2"]})
+```
+
+**Why it works**: the runner forwards the request JSON into child stdin and merges child stdio responses automatically.
 
 ---
 
-### 1.3 Ports and Data Flow (Very Important)
+## 3) Complete GUI Example: KV Set → KV Get (shows real data passing)
 
-![](gui-ports-and-wiring.png)
+**Goal**:
 
-Nodes exchange data through named ports.  
-Example wiring:  
-`Start.name ──▶ Greet.name`  
-`Greet.greeting ──▶ End.greeting`
+- User inputs `key val`
+- Write plugin config: `kv.<key> = <val>`
+- Read it back and print the value
 
-At runtime:
-- Start maps CLI args to its output ports
-- Nodes read inputs via wiring
-- Nodes execute programs
-- Outputs are written back to wiring
-- End reads final values and returns result
+Expected output: `bar`
 
-⚠️ If a port is not connected, downstream nodes receive empty values.
+### 3.1 Build the graph
 
----
+Create nodes:
 
-## 2) Hands-on GUI Test Case: “Hello, <name>!”
-
-Expected output:  
-```
-Hello, Alice!
-```
-
-### 2.1 Build the Graph
-
-Create three nodes:
 - `Start`
-- `Node` (label: `Greet`)
+- `WriteKV` (Code node, Python)
+- `ReadKV` (Code node, Python)
 - `End`
 
-### 2.2 Define Ports
+![](gui-overview-grphy.png)
 
-**Start**
-- Output ports: `name`
+### 3.2 Define ports
 
-**Greet**
-- Input ports: `name`
-- Output ports: `greeting`
+- **Start**  
+  outputs: `key`, `val`
 
-**End**
-- Input ports: `greeting`
+- **WriteKV**  
+  inputs: `key`, `val`  
+  outputs: `key`
 
-### 2.3 Connect Nodes
-- `Start.name` → `Greet.name`
-- `Greet.greeting` → `End.greeting`
+- **ReadKV**  
+  inputs: `key`  
+  outputs: `val`
 
-### 2.4 Configure the Greet Node Program
+- **End**  
+  inputs: `val`
 
-Example Python logic:
+### 3.3 Connect edges (wiring)
+
+- `Start.key` → `WriteKV.key`
+- `Start.val` → `WriteKV.val`
+- `WriteKV.key` → `ReadKV.key`
+- `ReadKV.val` → `End.val`
+
+![](gui-wiring.png)
+
+### 3.4 Node code (copy/paste)
+
+#### 3.4.1 WriteKV node (Python)
+
+This node writes `kv.<key> = <val>` into plugin config via mutations, and outputs `key`.
+
 ```python
 import sys
-name = sys.argv[1] if len(sys.argv) > 1 else "world"
-print(f"Hello, {name}!")
+from lyenv_sdk import read_request, mutate, respond_ok, respond_error, log
+
+def main():
+    # Load request (available because hybrid runtime forwards stdin)
+    read_request()
+
+    key = sys.argv[1] if len(sys.argv) > 1 else ""
+    val = sys.argv[2] if len(sys.argv) > 2 else ""
+    key = key.strip()
+
+    if not key:
+        respond_error("empty key")
+        return
+
+    mutate(f"kv.{key}", val, scope="plugin")
+    log(f"write kv.{key}={val}")
+
+    # Output for downstream port mapping:
+    respond_ok("", extra={"outputs": [key]})
+
+if __name__ == "__main__":
+    main()
 ```
 
-Notes:
-- Do not hardcode `python3`
-- Exported runners use `sys.executable` for portability
+#### 3.4.2 ReadKV node (Python)
 
-### 2.5 Create a Group (One Group = One Command)
-
-Create a Group containing:
-- Start
-- Greet
-- End
-
-Name the command: `run`
-
-### 2.6 Run in GUI
-
-![](gui-run-flow.png)
-
-Steps:
-1. Click `Run`
-2. Select Group `run`
-3. Input args: `Alice`
-
-Final output:
-```
-Hello, Alice!
-```
-
-The GUI automatically:
-- exports a temporary plugin
-- installs it
-- runs it
-- streams logs
-- cleans up
-
----
-
-## 3) Export as Plugin and Verify via CLI
-
-![](gui-export-plugin.png)
-
-Export the workflow as a plugin.  
-Install locally:
-```bash
-lyenv plugin add /path/to/exported-plugin --name=hello-demo
-```
-
-Run via CLI:
-```bash
-lyenv run hello-demo run -- Alice
-```
-
-Expected:
-```
-Hello, Alice!
-```
-
----
-
-## 4) Writing Plugins Without the GUI (Advanced)
-
-GUI is recommended, but direct plugin development is supported.
-
-### 4.1 Minimal Plugin Layout
-
-```
-plugins/<NAME>/
-├─ manifest.yaml
-├─ scripts/
-│  └─ main.py
-└─ config.yaml (optional)
-```
-
-### 4.2 Example `manifest.yaml`
-
-```yaml
-name: hello-cli
-version: 0.1.0
-expose: [run]
-
-commands:
-  - name: run
-    executor: stdio
-    program: ./scripts/main.py
-```
-
-### 4.3 Example stdio script
+This node reads `kv.<key>` from plugin config and outputs `val`.
 
 ```python
-from lyenv_sdk import read_request, respond_ok
+import sys
+from lyenv_sdk import read_request, config_plugin, respond_ok, respond_error, log
 
-req = read_request()
-args = req.get("args", [])
-name = args[0] if args else "world"
-respond_ok(f"Hello, {name}!")
+def main():
+    read_request()
+
+    key = sys.argv[1] if len(sys.argv) > 1 else ""
+    key = key.strip()
+    if not key:
+        respond_error("empty key")
+        return
+
+    val = config_plugin(f"kv.{key}", "")
+    log(f"read kv.{key}={val}")
+
+    respond_ok("", extra={"outputs": [str(val)]})
+
+if __name__ == "__main__":
+    main()
 ```
 
-This approach is more flexible, but you must:
-- manage wiring manually
-- handle inputs/outputs yourself
+### 3.5 Run in GUI
+
+Click **Run**, choose the group command, input args: `foo bar`
+
+Expected final output: `bar`
+
+![](gui-run.png)
 
 ---
 
-## 5) Publishing to the Plugin Center (Release-assets Model)
+## 4) Multi-output Example (JSON array outputs)
 
-✅ **Commit source only:**
+If a node has outputs: `a`, `b`, `c`  
+Your node program can just print:
+
+```python
+import json
+print(json.dumps(["A","B","C"], ensure_ascii=False))
+```
+
+The runner maps outputs in order.
+
+> **Tip**: prefer JSON array outputs to avoid space-splitting issues.
+
+---
+
+## 5) Export as Plugin and Verify via CLI
+
+Export the workflow as a plugin from GUI.
+
+Install locally:
+
+```bash
+lyenv plugin add /path/to/exported-plugin --name=myflow
+```
+
+Run:
+
+```bash
+lyenv run myflow run -- foo bar
+```
+
+---
+
+## 6) Publishing to the Plugin Center (Release-assets model)
+
+✅ **Commit source only**:
+
 ```
 plugins/<NAME>/
   manifest.yaml
@@ -260,40 +265,40 @@ plugins/<NAME>/
 
 ❌ **Do NOT commit zip artifacts.**
 
-**PR flow:**
-1. Fork the plugin center repo
+**PR flow**:
+
+1. Fork the `plugin-center` repo
 2. Add/modify `plugins/<NAME>/...`
 3. Bump version in `manifest.yaml`
 4. Open PR to `main`
 
 After merge, CI will:
+
 - build `<NAME>-<VERSION>.zip`
-- upload it as GitHub Release assets (tag=artifacts)
-- update `index.yaml`
-- open an automatic PR
+- upload to GitHub Release assets (tag=`artifacts`)
+- update `index.yaml` and open an automatic PR
 
-Merge the `index.yaml` PR to publish.
-
----
-
-## 6) Troubleshooting
-
-| Issue | Solution |
-|-------|----------|
-| `node failed` | check `scripts/runner_<NODE>.py`<br>inspect stderr in GUI logs |
-| **Windows issues** | ensure Python is installed<br>rely on `sys.executable`<br>avoid OS-specific shell commands |
-| **Empty data** | most often caused by missing edges<br>verify port connections |
+Merge the index PR to publish.
 
 ---
 
-## 7) Style & Portability Checklist
+## 7) Troubleshooting
 
-- [ ] LF line endings
-- [ ] Avoid OS-specific tools
-- [ ] Prefer `sys.executable` for Python
-- [ ] Keep nodes stateless
-- [ ] Validate wiring visually in GUI
+### 7.1 Empty values downstream
 
-Thanks for contributing to lyenv 🚀
+- Most common: missing edges
+- Ensure `Upstream.output → Downstream.input` connections exist
+
+### 7.2 Node gets wrong input
+
+- Ensure input port names match what you connect
+- Ensure one input port has only one incoming edge
+
+### 7.3 Need config access but code fails
+
+- With hybrid runtime you can safely call `read_request()`
+- Use `mutate` / `config_plugin` / `log` / `respond_ok(extra={"outputs":[...]})`
 
 ---
+
+Thanks again for contributing to lyenv 🚀

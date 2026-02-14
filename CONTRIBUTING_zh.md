@@ -1,47 +1,48 @@
-# lyenv 贡献指南（插件 + GUI 工作流）
+# lyenv 贡献指南（GUI 工作流 + 插件）
 
-欢迎你为 **lyenv** 贡献代码或插件！
+欢迎你为 **lyenv** 贡献插件/工作流！
 
-本文档介绍：
-- 如何使用 **GUI（推荐）** 编写插件
-- 节点之间 **数据是如何流动的**
-- 如何导出为标准插件并用 CLI 验证
-- 如何 **不借助 GUI 直接编写插件**
-- 如何发布到 **插件中心**
+本文档重点讲清楚：
+- GUI 中节点之间的数据流（端口 + 连线）
+- **统一的 Hybrid Node Runtime**（业务节点与 stdio 节点统一）
+- 一个可以完全复现的案例：**KV Set → KV Get**
+- 如何导出插件并发布到插件中心
 
----
-
-## 0）快速术语说明
-
-**环境（env）**  
-由 `lyenv create/init` 创建的目录，包含：
-`bin/ plugins/ workspace/ .lyenv/ lyenv.yaml`
-
-**插件（Plugin）**  
-位于 `env/plugins/<INSTALL_NAME>/` 的目录。
-
-**工作流（Workflow）**  
-GUI 中的节点 + 连线图，导出后即为插件。
-
-**Group（组）**  
-GUI 中一个 Group 对应插件里的一个命令。
-> **一个 Group = 一个命令**
-
-**端口（Ports）**  
-节点通过端口交换数据：
-- 输出端口：产生数据
-- 输入端口：消费数据
+![](gui-overview.png)
 
 ---
 
-## 1）推荐方式：使用 GUI 编写插件（Workflow 优先）
+## 0）核心概念（先看这个）
 
-lyenv 的 GUI **不是另一个运行时**，  
-而是一个 **工作流 → 插件 的可视化编译器**。
+### 0.1 工作流模型
+- **工作流 = 插件**
+- **Group = 命令**
+- **节点 = 执行步骤**
+- **连线 = 数据依赖**
+
+### 0.2 数据流模型（最重要）
+节点通过 **端口** 交换数据：
+
+- **输出端口（outputs）** 产生值
+- **输入端口（inputs）** 消费值
+- 一条连线表示：  
+  `上游输出端口 → 下游输入端口`
+
+运行时数据存放在 flow “总线”里：
+
+```
+flow.outputs.<node_id>.<port_name>
+```
+
+GUI 导出器会生成 wiring 文件 `flow_wiring.json`，用于把下游输入映射到上游输出。
+
+![](gui-ports.png)
 
 ---
 
-### 1.1 环境准备
+## 1）环境准备（一次性）
+
+创建环境：
 
 ```bash
 lyenv create ./demo
@@ -49,17 +50,19 @@ lyenv init ./demo
 cd ./demo
 ```
 
-**激活环境：**  
-Linux/macOS  
-```bash
-eval "$(lyenv activate)"
-```
-Windows PowerShell  
-```powershell
-lyenv activate | Invoke-Expression
-```
+激活：
 
-**启动 GUI 并注册环境：**  
+- **Linux/macOS**：
+  ```bash
+  eval "$(lyenv activate)"
+  ```
+- **Windows PowerShell**：
+  ```powershell
+  lyenv activate | Invoke-Expression
+  ```
+
+启动 GUI 并注册 env：
+
 ```bash
 lyenv gui start --open
 lyenv gui add . --name=demo
@@ -67,155 +70,184 @@ lyenv gui add . --name=demo
 
 ---
 
-### 1.2 工作流整体结构
+## 2）Hybrid Node Runtime（你现在最重要的能力）
 
-![](gui-workflow-overview.png)
+lyenv GUI 使用 **Hybrid Node Runtime**，让节点作者可以选择两种写法（但节点类型不需要分裂）。
 
-最小工作流结构：  
-`Start` → `Node` → `End`
+### 2.1 简单写法（推荐，80% 节点）
 
-- `Start`：接收命令行参数
-- `Node`：执行实际程序
-- `End`：输出最终结果
+- 输入来自 `argv`（顺序=输入端口顺序）
+- 输出写到 `stdout`
+- 多输出建议输出 JSON 数组：`["o1","o2"]`
+
+示例（`simple_node.py`）：
+
+```python
+import sys, json
+a = sys.argv[1] if len(sys.argv) > 1 else ""
+b = sys.argv[2] if len(sys.argv) > 2 else ""
+print(json.dumps([a.upper(), b.lower()], ensure_ascii=False))
+```
+
+### 2.2 高级写法（需要配置/变更/产物/日志时）
+
+- 可以在节点脚本里调用 `read_request()`
+- 可以使用 `mutate` / `config_plugin` / `emit_artifact` / `log`
+- 可以返回 stdio JSON（`respond_ok` / `respond_error`）
+- 推荐用 `outputs` 显式提供端口输出：
+
+```python
+respond_ok("", extra={"outputs": ["out1", "out2"]})
+```
+
+**原理**：runner 会把 request JSON 转发到子进程 stdin，并自动合并子进程的 stdio 响应。
 
 ---
 
-### 1.3 端口与数据流（非常重要）
+## 3）完整案例：KV Set → KV Get（体现数据传递 + 配置读写）
 
-![](gui-ports-and-wiring.png)
+**目标**：
 
-示例连线：  
-`Start.name → Greet.name`  
-`Greet.greeting → End.greeting`
+- 输入 `key val`
+- 写入插件配置：`kv.<key> = <val>`
+- 读取 `kv.<key>` 并打印出来
 
-运行时流程：
-- Start 将 CLI 参数映射到输出端口
-- 下游节点通过 wiring 读取数据
-- 节点执行程序
-- 输出写回 wiring
-- End 生成最终结果
+期望输出：`bar`
 
-⚠️ 未连接的端口会得到空值
+### 3.1 画布结构
 
----
+创建节点：
 
-## 2）GUI 测试案例：Hello, <name>!
-
-期望输出：  
-```
-Hello, Alice!
-```
-
-### 2.1 创建节点
-
-创建 3 个节点：
 - `Start`
-- 普通节点（命名为 `Greet`）
+- `WriteKV`（Python code）
+- `ReadKV`（Python code）
 - `End`
 
-### 2.2 定义端口
+![](gui-overview-grphy.png)
 
-**Start：**
-- 输出端口：`name`
+### 3.2 端口定义
 
-**Greet：**
-- 输入端口：`name`
-- 输出端口：`greeting`
+- **Start**  
+  outputs：`key`, `val`
 
-**End：**
-- 输入端口：`greeting`
+- **WriteKV**  
+  inputs：`key`, `val`  
+  outputs：`key`
 
-### 2.3 连接节点
-- `Start.name` → `Greet.name`
-- `Greet.greeting` → `End.greeting`
+- **ReadKV**  
+  inputs：`key`  
+  outputs：`val`
 
-### 2.4 配置 Greet 节点程序
+- **End**  
+  inputs：`val`
 
-示例 Python 逻辑：
+### 3.3 连线（wiring）
+
+- `Start.key` → `WriteKV.key`
+- `Start.val` → `WriteKV.val`
+- `WriteKV.key` → `ReadKV.key`
+- `ReadKV.val` → `End.val`
+
+![](gui-wiring.png)
+
+### 3.4 节点代码（直接复制）
+
+#### 3.4.1 WriteKV（Python）
+
+写入 `kv.<key>=<val>` 并输出 `key`：
+
 ```python
 import sys
-name = sys.argv[1] if len(sys.argv) > 1 else "world"
-print(f"Hello, {name}!")
+from lyenv_sdk import read_request, mutate, respond_ok, respond_error, log
+
+def main():
+    read_request()
+
+    key = sys.argv[1] if len(sys.argv) > 1 else ""
+    val = sys.argv[2] if len(sys.argv) > 2 else ""
+    key = key.strip()
+
+    if not key:
+        respond_error("empty key")
+        return
+
+    mutate(f"kv.{key}", val, scope="plugin")
+    log(f"write kv.{key}={val}")
+
+    respond_ok("", extra={"outputs": [key]})
+
+if __name__ == "__main__":
+    main()
 ```
 
-说明：
-- 不要写死 `python3`
-- 导出的 runner 会使用 `sys.executable`，自动适配 Windows/Linux
+#### 3.4.2 ReadKV（Python）
 
-### 2.5 创建 Group（一个 Group = 一个命令）
-
-把 Start / Greet / End 放入同一个 Group，命名为 `run`。
-
-### 2.6 在 GUI 中运行
-
-![](gui-run-flow.png)
-
-运行步骤：
-1. 点击 `Run`
-2. 选择 Group：`run`
-3. 输入参数：`Alice`
-
-最终输出：
-```
-Hello, Alice!
-```
-
----
-
-## 3）导出为插件并用 CLI 验证
-
-![](gui-export-plugin.png)
-
-导出插件后：
-```bash
-lyenv plugin add /path/to/exported-plugin --name=hello-demo
-lyenv run hello-demo run -- Alice
-```
-
----
-
-## 4）不使用 GUI 直接编写插件（进阶）
-
-GUI 推荐，但也支持手写插件。
-
-### 4.1 最小结构
-
-```
-plugins/<NAME>/
-├─ manifest.yaml
-├─ scripts/main.py
-└─ config.yaml（可选）
-```
-
-### 4.2 `manifest.yaml` 示例
-
-```yaml
-name: hello-cli
-version: 0.1.0
-expose: [run]
-
-commands:
-  - name: run
-    executor: stdio
-    program: ./scripts/main.py
-```
-
-### 4.3 `stdio` 脚本示例
+读取 `kv.<key>` 并输出 `val`：
 
 ```python
-from lyenv_sdk import read_request, respond_ok
+import sys
+from lyenv_sdk import read_request, config_plugin, respond_ok, respond_error, log
 
-req = read_request()
-args = req.get("args", [])
-name = args[0] if args else "world"
-respond_ok(f"Hello, {name}!")
+def main():
+    read_request()
+
+    key = sys.argv[1] if len(sys.argv) > 1 else ""
+    key = key.strip()
+    if not key:
+        respond_error("empty key")
+        return
+
+    val = config_plugin(f"kv.{key}", "")
+    log(f"read kv.{key}={val}")
+
+    respond_ok("", extra={"outputs": [str(val)]})
+
+if __name__ == "__main__":
+    main()
+```
+
+### 3.5 GUI 运行
+
+点击 **Run**，输入参数：`foo bar`
+
+最终输出应为：`bar`
+
+![](gui-run.png)
+
+---
+
+## 4）多输出写法（强烈推荐）
+
+如果节点有输出端口：`a`, `b`, `c`  
+推荐输出 JSON 数组（不怕空格，不会 split 误拆）：
+
+```python
+import json
+print(json.dumps(["A","B","C"], ensure_ascii=False))
 ```
 
 ---
 
-## 5）发布到插件中心
+## 5）导出为插件并用 CLI 验证
 
-✅ **只提交源码：**
+导出插件后本地安装：
+
+```bash
+lyenv plugin add /path/to/exported-plugin --name=myflow
+```
+
+CLI 运行：
+
+```bash
+lyenv run myflow run -- foo bar
+```
+
+---
+
+## 6）发布到插件中心（Release assets 模式）
+
+✅ **只提交源码**：
+
 ```
 plugins/<NAME>/
   manifest.yaml
@@ -223,40 +255,36 @@ plugins/<NAME>/
   config.yaml（可选）
 ```
 
-❌ **不提交 zip。**
+❌ **不提交 zip**。
 
-**PR 流程：**
-1. Fork 插件中心仓库
+**流程**：
+
+1. fork 插件中心仓库
 2. 添加/修改 `plugins/<NAME>/...`
-3. 在 `manifest.yaml` 中升级版本号
-4. 向 `main` 分支发起 PR
+3. 更新版本号
+4. 提 PR 到 `main`
 
-合并后 CI 会：
-- 打包 `<NAME>-<VERSION>.zip`
-- 作为 GitHub Release 附件上传（tag=artifacts）
-- 更新 `index.yaml`
-- 自动创建一个 PR
-
-合并该 PR 即可完成发布。
+合并后 CI 自动打包 zip、上传 Release（tag=`artifacts`）、更新 `index.yaml` 并开 PR。合并 index PR 即发布。
 
 ---
 
-## 6）常见问题
+## 7）常见问题排查
 
-| 问题 | 解决方法 |
-|------|----------|
-| `node failed` | 查看 `scripts/runner_<NODE>.py`<br>查看 GUI 日志中的 stderr |
-| **Windows 问题** | 确保 Python 已安装<br>使用 `sys.executable`<br>避免 Linux-only 命令 |
-| **数据为空** | 多半是端口没连好<br>检查端口名是否一致 |
+### 7.1 下游拿到空值
+
+- 最常见：没有连线
+- 确认：上游输出 → 下游输入 连接存在
+
+### 7.2 输入不对/看起来乱
+
+- 确认端口名字与连线一致
+- 一个输入端口只应有一条入线
+
+### 7.3 需要访问配置/写 mutation
+
+- Hybrid runtime 下可以安全调用 `read_request()`
+- 用 `mutate` / `config_plugin` / `log` / `respond_ok(extra={"outputs":[...]})`
 
 ---
 
-## 7）风格与可移植性建议
-
-- [ ] 使用 LF 行尾
-- [ ] 避免平台相关命令
-- [ ] Python 节点优先 `sys.executable`
-- [ ] 尽量无状态
-- [ ] 用 GUI 验证 wiring
-
-感谢你为 lyenv 做出贡献 🚀
+感谢你的贡献 🚀

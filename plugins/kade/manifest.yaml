@@ -1,0 +1,61 @@
+name: kade
+version: 0.3.0
+expose:
+  - kade
+
+config:
+  local_file: ./config.yaml
+
+commands:
+  - name: prepare
+    summary: "Prepare environment and derive paths"
+    steps:
+      - executor: stdio
+        program: python3
+        args: ["./scripts/cmd_prepare.py"]
+        workdir: .
+        use_stdio: true
+  - name: deps
+    summary: "Install build dependencies (apt)"
+    steps:
+      - executor: stdio
+        program: python3
+        args: ["./scripts/cmd_deps.py"]
+        workdir: .
+        use_stdio: true
+
+  - name: sync
+    summary: "Sync kernel source (GKI repo / non-GKI repo|local|zip)"
+    steps:
+      - executor: stdio
+        program: python3
+        args: ["./scripts/cmd_sync.py"]
+        workdir: .
+        use_stdio: true
+
+  - name: compile_commands
+    summary: "Export compile_commands.json"
+    steps:
+      - executor: stdio
+        program: python3
+        args: ["./scripts/cmd_compile_commands.py"]
+        workdir: .
+        use_stdio: true
+
+  - name: abi
+    summary: "Export ABI symbols into kernel tree (GKI only)"
+    steps:
+      - executor: stdio
+        program: python3
+        args: ["./scripts/cmd_abi.py"]
+        workdir: .
+        use_stdio: true
+
+  - name: build
+    summary: "Build (GKI with pre-steps; non-GKI just run script)"
+    steps:
+      - executor: stdio
+        program: python3
+        args: ["./scripts/cmd_build.py"]
+        workdir: .
+        use_stdio: true

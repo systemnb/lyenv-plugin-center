@@ -1,0 +1,177 @@
+env:
+  home: ""
+  workspace: ""
+  cache: ""
+
+general:
+  package_manager: ""      # apt/dnf/pacman/apk/zypper/brew (empty -> auto-detect later if you implement)
+  auto_detect_pm: true
+  strict_pm: true
+  log_level: "info"
+
+kernel:
+  flavor: "gki"            # gki | non_gki
+
+# -----------------------------------------------------------------------------
+# GKI
+# -----------------------------------------------------------------------------
+gki:
+  android_version: 14
+  kernel_version: "6.1"
+  target_arch: "aarch64"
+
+  source:
+    path: ""
+    dir_name: "android-kernel"
+    subdir: ""
+
+  repo:
+    manifest_url: "https://android.googlesource.com/kernel/manifest"
+    branch: ""             # empty -> common-android{android_version}-{kernel_version}
+    jobs: ""               # empty -> cpu_count
+    init_args: ""
+    sync_args: "-c --no-tags --optimized-fetch --force-sync"
+    reinit: false
+
+  driver:
+    project_name: "mydriver"
+    in_tree: true
+    in_tree_path: ""       # empty -> common/drivers/{project_name}
+    external_src_dir: ""   # used only when in_tree=false
+    module_name: "mydriver.ko"
+    overwrite: true
+
+  build:
+    jobs: 32
+    legacy_args: []
+    legacy_env: {}
+    bazel:
+      dist_target: ""      # empty -> //common:kernel_{arch}_dist
+      args: ["--config=fast"]
+
+  compile_commands:
+    target: ""             # empty -> //common:kernel_{arch}_compile_commands
+    bazel_args: []         # empty -> use gki.build.bazel.args
+
+# -----------------------------------------------------------------------------
+# non-GKI
+# -----------------------------------------------------------------------------
+non_gki:
+  source:
+    type: "repo"           # repo | local | zip
+    repo_url: ""
+    branch: ""
+    local_path: ""
+    zip_path: ""
+
+    # ZIP behavior:
+    clean_extract: false
+    zip_progress_every: 200
+    zip_strip_root: true   # NEW: if zip contains a single top-level dir, move its contents up
+
+    # Destination for repo/zip:
+    dest_path: ""
+    dest_dir_name: "non-gki-kernel"
+
+  build:
+    # mode: script | make
+    mode: "script"
+
+    # script mode (do exactly what user configured)
+    script: "build.sh"
+    args: []
+    artifacts_dir: "out"
+
+    # make mode (optional): follow the commands you provided
+    make:
+      out_dir: "out"
+      defconfig: ""           # e.g. vendor_defconfig (located under arch/arm64/configs/)
+      jobs: ""                # empty -> nproc --all
+
+      # kernel_series: "4.4" or "4.9_plus" (affects CROSS_COMPILE prefixes)
+      kernel_series: "4.9_plus"
+
+      # Toolchain PATH prefix (prepend to PATH)
+      toolchain_path_prefix: "/root/toolchain/clang/bin:/root/toolchain/gcc32/bin:/root/toolchain/gcc64/bin"
+
+      # Common env
+      arch: "arm64"
+      subarch: "arm64"
+      cc: "clang"
+
+      # For 4.9+ default:
+      cross_compile: "aarch64-linux-gnu-"
+      cross_compile_arm32: "arm-linux-gnueabi-"
+      triple: "aarch64-linux-gnu-"
+
+      # For 4.4 default (if kernel_series=4.4):
+      cross_compile_44: "aarch64-linux-android-"
+      cross_compile_arm32_44: "arm-linux-androideabi-"
+      triple_44: "aarch64-linux-android-"
+
+sync:
+  heartbeat_sec: 30
+
+compile_commands:
+  non_gki_out_dir: ""
+
+# -----------------------------------------------------------------------------
+# deps installer
+# -----------------------------------------------------------------------------
+deps:
+  # apt only in current implementation
+  enable: true
+  use_sudo: true
+  packages:
+    - git
+    - automake
+    - flex
+    - lzop
+    - bison
+    - gperf
+    - build-essential
+    - zip
+    - curl
+    - zlib1g-dev
+    - g++-multilib
+    - gcc-multilib
+    - libxml2-utils
+    - bzip2
+    - libbz2-dev
+    - libbz2-1.0
+    - libghc-bzlib-dev
+    - squashfs-tools
+    - pngcrush
+    - schedtool
+    - dpkg-dev
+    - liblz4-tool
+    - make
+    - optipng
+    - maven
+    - libssl-dev
+    - pwgen
+    - libswitch-perl
+    - policycoreutils
+    - minicom
+    - libxml-sax-base-perl
+    - libxml-simple-perl
+    - bc
+    - libc6-dev-i386
+    - libx11-dev
+    - lib32z-dev
+    - libgl1-mesa-dev
+    - xsltproc
+    - unzip
+    - device-tree-compiler
+    - python3
+    - ccache
+    - git-lfs
+    - gnupg
+    - imagemagick
+    - libelf-dev
+    - libncurses5-dev
+    - libsdl1.2-dev
+    - rsync
+    - adb
+    - fastboot
+    - libstdc++6

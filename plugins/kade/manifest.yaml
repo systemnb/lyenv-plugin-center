@@ -1,5 +1,5 @@
 name: kade
-version: 0.3.0
+version: 0.4.1
 expose:
   - kade
 
@@ -57,5 +57,40 @@ commands:
       - executor: stdio
         program: python3
         args: ["./scripts/cmd_build.py"]
+        workdir: .
+        use_stdio: true
+  - name: clean
+    summary: "Clean build outputs/caches"
+    steps:
+      - executor: stdio
+        program: python3
+        args: ["./scripts/cmd_clean.py"]
+        workdir: .
+        use_stdio: true
+
+  - name: export
+    summary: "Export build artifacts to a target directory"
+    steps:
+      - executor: stdio
+        program: python3
+        args: ["./scripts/cmd_export.py"]
+        workdir: .
+        use_stdio: true
+
+  - name: abi_upstream
+    summary: "Patch upstream ABI settings (symbols.deny + strict mode)"
+    steps:
+      - executor: stdio
+        program: python3
+        args: ["./scripts/cmd_abi_upstream.py"]
+        workdir: .
+        use_stdio: true
+
+  - name: img
+    summary: "Image tools: unpack/repack ramdisk for boot/vendor_boot/system"
+    steps:
+      - executor: stdio
+        program: python3
+        args: ["./scripts/cmd_img.py"]
         workdir: .
         use_stdio: true

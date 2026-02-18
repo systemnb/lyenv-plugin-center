@@ -175,3 +175,88 @@ deps:
     - adb
     - fastboot
     - libstdc++6
+
+
+# -----------------------------------------------------------------------------
+# clean
+# -----------------------------------------------------------------------------
+clean:
+  # Safety: only allow deleting paths under workspace or source_dir by default
+  safe_only: true
+
+  # Default paths to delete (relative to kernel source root)
+  gki_paths:
+    - "out"
+    - "bazel-out"
+    - "bazel-bin"
+    - "bazel-testlogs"
+    - "bazel-kade"
+    - ".cache"
+
+  non_gki_paths:
+    - "out"
+
+  # Also delete export temp cache under workspace
+  workspace_paths:
+    - ".kade/tmp"
+    - ".kade/export"
+
+# -----------------------------------------------------------------------------
+# export artifacts
+# -----------------------------------------------------------------------------
+export:
+  # Destination directory (absolute or relative to workspace)
+  dest_dir: "exports"
+  # Create subfolder with timestamp
+  timestamp_subdir: true
+  # Copy mode: copy | archive (archive creates .tar.gz)
+  mode: "copy"
+
+  # Where to read artifacts from:
+  # auto -> gki: derived.gki.output_path_abs; non-gki: derived.build.artifacts_dir or source_dir/out
+  source_mode: "auto"
+
+  # Patterns to include (glob), relative to artifact root
+  include:
+    - "**/*.ko"
+    - "**/Image"
+    - "**/*.dtb"
+    - "**/*.dtbo"
+    - "**/System.map"
+    - "**/vmlinux"
+    - "**/*.img"
+
+  # Patterns to exclude (glob)
+  exclude:
+    - "**/.git/**"
+    - "**/.repo/**"
+
+# -----------------------------------------------------------------------------
+# ABI upstream patch
+# -----------------------------------------------------------------------------
+abi_upstream:
+  # Path under kernel root to symbols.deny (relative)
+  symbols_deny_path: "build/kernel/abi/symbols.deny"
+  # Path under kernel root to BUILD.bazel (relative)
+  build_bazel_path: "common/BUILD.bazel"
+  # Backup files before patching
+  backup: true
+
+# -----------------------------------------------------------------------------
+# img tools
+# -----------------------------------------------------------------------------
+img:
+  tools:
+    mkbootimg: "mkbootimg.py"
+    unpack_bootimg: "unpack_bootimg.py"
+    repack_bootimg: "repack_bootimg.py"
+
+  # Default output directory (relative to workspace)
+  out_dir: "img_out"
+
+  # Commands used for ramdisk extraction/packing
+  lz4_bin: "lz4"
+  cpio_bin: "cpio"
+
+  # For system.img support: you may use simg2img / 7z externally (optional)
+  simg2img_bin: "simg2img"

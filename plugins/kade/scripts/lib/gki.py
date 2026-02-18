@@ -1,7 +1,7 @@
 # scripts/lib/gki.py
 import os
 import shutil
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 from lyenv_sdk import log
 from scripts.lib.common import (
@@ -113,6 +113,13 @@ def copy_driver_tree(src_dir: str, dest_dir: str, overwrite: bool) -> bool:
     return True
 
 def integrate_driver(source_dir: str, android_ver: int, arch: str) -> Dict[str, Any]:
+    """
+    Android <= 13:
+      - update legacy list (common/android/gki_{arch}_modules) for build.sh flow
+      - ALSO update modules.bzl if it exists (to keep Bazel module list in sync)
+    Android > 13:
+      - update modules.bzl
+    """
     project = str(cfg("gki.driver.project_name", "") or "").strip() or "kerneldriver"
     module_name = str(cfg("gki.driver.module_name", "") or "").strip()
 
@@ -150,15 +157,25 @@ def integrate_driver(source_dir: str, android_ver: int, arch: str) -> Dict[str, 
     modules_bzl = os.path.join(source_dir, "common", "modules.bzl")
     legacy_list = os.path.join(source_dir, "common", "android", f"gki_{arch}_modules")
 
-    list_path = ""
-    list_modified = False
+    list_updates: List[str] = []
+
     if module_rel:
-        if android_ver > 13:
-            list_path = modules_bzl
-            list_modified = insert_module_into_modules_bzl(modules_bzl, module_rel)
+        if android_ver <= 13:
+            # Always update legacy list
+            legacy_changed = ensure_line_in_file(legacy_list, module_rel)
+            list_updates.append(f"legacy_list={legacy_list} changed={legacy_changed}")
+
+            # Also update modules.bzl if present (Android 13 needs this according to your tests)
+            if os.path.isfile(modules_bzl):
+                bzl_changed = insert_module_into_modules_bzl(modules_bzl, module_rel)
+                list_updates.append(f"modules_bzl={modules_bzl} changed={bzl_changed}")
+            else:
+                list_updates.append("modules_bzl missing -> skip")
         else:
-            list_path = legacy_list
-            list_modified = ensure_line_in_file(legacy_list, module_rel)
+            bzl_changed = insert_module_into_modules_bzl(modules_bzl, module_rel)
+            list_updates.append(f"modules_bzl={modules_bzl} changed={bzl_changed}")
+    else:
+        list_updates.append("module_name empty -> skip list update")
 
     # store useful derived
     set_derived("derived.gki.driver_project_name", project)
@@ -172,9 +189,46 @@ def integrate_driver(source_dir: str, android_ver: int, arch: str) -> Dict[str, 
         "drivers_makefile": drivers_makefile,
         "makefile_modified": makefile_modified,
         "module_rel": module_rel,
-        "module_list_path": list_path,
-        "module_list_modified": list_modified,
+        "list_updates": list_updates,
     }
+
+def ensure_kmi_strict_mode_disabled(build_config_abs: str) -> bool:
+    """
+    Ensure KMI_SYMBOL_LIST_STRICT_MODE=0 exists in build config.
+    If key exists and is not 0, force it to 0.
+    Return True if modified.
+    """
+    if not os.path.isfile(build_config_abs):
+        raise RuntimeError(f"BUILD_CONFIG not found: {build_config_abs}")
+
+    with open(build_config_abs, "r", encoding="utf-8", errors="ignore") as f:
+        lines = f.read().splitlines()
+
+    found = False
+    changed = False
+    out: List[str] = []
+
+    for ln in lines:
+        if ln.strip().startswith("KMI_SYMBOL_LIST_STRICT_MODE="):
+            found = True
+            if ln.strip() != "KMI_SYMBOL_LIST_STRICT_MODE=0":
+                out.append("KMI_SYMBOL_LIST_STRICT_MODE=0")
+                changed = True
+            else:
+                out.append(ln)
+            continue
+        out.append(ln)
+
+    if not found:
+        out.append("")
+        out.append("KMI_SYMBOL_LIST_STRICT_MODE=0")
+        changed = True
+
+    if changed:
+        with open(build_config_abs, "w", encoding="utf-8") as wf:
+            wf.write("\n".join(out) + "\n")
+
+    return changed
 
 def build(source_dir: str, android_ver: int, kernel_ver: str, arch: str, heartbeat_sec: int) -> Dict[str, Any]:
     jobs = to_int(cfg("gki.build.jobs", ""), None) or cpu_count()
@@ -188,6 +242,11 @@ def build(source_dir: str, android_ver: int, kernel_ver: str, arch: str, heartbe
 
         build_config = legacy_env.get("BUILD_CONFIG") or f"common/build.config.gki.{arch}"
         lto = legacy_env.get("LTO") or "thin"
+
+        # Patch build config: KMI_SYMBOL_LIST_STRICT_MODE=0 (required by your tests)
+        build_config_abs = os.path.join(source_dir, build_config)
+        modified = ensure_kmi_strict_mode_disabled(build_config_abs)
+        log(f"[gki] patch BUILD_CONFIG strict mode: {build_config_abs} modified={modified}")
 
         env_parts = [f"BUILD_CONFIG={build_config}", f"LTO={lto}"]
         for k, v in legacy_env.items():
@@ -226,7 +285,51 @@ def build(source_dir: str, android_ver: int, kernel_ver: str, arch: str, heartbe
         "output_path_abs": output_abs,
     }
 
-def export_compile_commands(source_dir: str, arch: str, heartbeat_sec: int) -> Dict[str, Any]:
+def _plugin_root() -> str:
+    # scripts/lib/gki.py -> kade root is two levels up
+    return abspath_expand(os.path.join(os.path.dirname(__file__), "..", ".."))
+
+def export_compile_commands(source_dir: str, android_ver: int, kernel_ver: str, arch: str, heartbeat_sec: int) -> Dict[str, Any]:
+    """
+    Android <= 13: use python gen_compile_commands.py like non-gki
+      python3 tools/gen_compile_commands.py -d out/android{A}-{K}/common
+    Android > 13: use bazel target
+    """
+    source_dir = abspath_expand(source_dir)
+
+    if android_ver <= 13:
+        kernel_script = os.path.join(source_dir, "common", "scripts", "clang-tools", "gen_compile_commands.py")
+
+        # fallback script shipped with plugin
+        fallback_rel = str(cfg("non_gki.compile_commands.fallback_script", "") or "").strip()
+        if not fallback_rel:
+            fallback_rel = "tools/gen_compile_commands.py"
+        fallback_path = fallback_rel if os.path.isabs(fallback_rel) else os.path.join(_plugin_root(), fallback_rel)
+        fallback_path = abspath_expand(fallback_path)
+
+        if os.path.isfile(kernel_script):
+            script = kernel_script
+            log(f"[gki][compile_commands] using kernel script: {script}")
+        else:
+            ensure_file(fallback_path, "fallback gen_compile_commands.py (kade)")
+            script = fallback_path
+            log(f"[gki][compile_commands] kernel script missing, using fallback: {script}")
+
+        out_dir = abspath_expand(os.path.join(source_dir, "out", f"android{android_ver}-{kernel_ver}", "common"))
+        run_cmd(["python3", script, "-d", out_dir], cwd=source_dir, stage="gki:compile_commands_py", heartbeat_sec=heartbeat_sec)
+
+        cc = ""
+        for cand in [
+            os.path.join(source_dir, "compile_commands.json"),
+            os.path.join(source_dir, "common", "compile_commands.json"),
+            os.path.join(out_dir, "compile_commands.json"),
+        ]:
+            if os.path.isfile(cand):
+                cc = cand
+                break
+        return {"mode": "python", "script": script, "out_dir": out_dir, "compile_commands": cc}
+
+    # Android > 13: Bazel mode
     bazel = os.path.join(source_dir, "tools", "bazel")
     ensure_file(bazel, "tools/bazel")
     if not os.access(bazel, os.X_OK):
@@ -241,13 +344,12 @@ def export_compile_commands(source_dir: str, arch: str, heartbeat_sec: int) -> D
         bazel_args = parse_list_value(cfg("gki.build.bazel.args", []))
 
     cmd = [bazel, "run"] + bazel_args + [target]
-    run_cmd(cmd, cwd=source_dir, stage="gki:compile_commands", heartbeat_sec=heartbeat_sec)
+    run_cmd(cmd, cwd=source_dir, stage="gki:compile_commands_bazel", heartbeat_sec=heartbeat_sec)
 
-    # Best-effort locate output
     cc1 = os.path.join(source_dir, "compile_commands.json")
     cc2 = os.path.join(source_dir, "common", "compile_commands.json")
     cc = cc1 if os.path.isfile(cc1) else (cc2 if os.path.isfile(cc2) else "")
-    return {"target": target, "compile_commands": cc}
+    return {"mode": "bazel", "target": target, "compile_commands": cc}
 
 def export_abi(source_dir: str, arch: str, symbols: List[str], mode: str, do_sort: bool) -> Dict[str, Any]:
     abi_file = os.path.join(source_dir, "common", "android", f"abi_gki_{arch}")

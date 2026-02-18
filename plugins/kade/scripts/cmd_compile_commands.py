@@ -23,14 +23,30 @@ def main():
         if not source_dir:
             ws = infer_workspace()
             source_dir = infer_source_dir(ws)
+
+        android_ver = to_int(cfg("gki.android_version", ""), None)
+        kernel_ver = str(cfg("gki.kernel_version", "") or "").strip()
+        if android_ver is None or not kernel_ver:
+            respond_error("Missing gki.android_version or gki.kernel_version", code=2)
+
         arch = str(cfg("gki.target_arch", "aarch64") or "aarch64").strip()
-        info = export_compile_commands(source_dir, arch, heartbeat)
+
+        info = export_compile_commands(source_dir, android_ver, kernel_ver, arch, heartbeat)
+
         outputs = [
-            f"flavor=gki",
+            "flavor=gki",
             f"source_dir={source_dir}",
-            f"target={info.get('target','')}",
+            f"android_version={android_ver}",
+            f"kernel_version={kernel_ver}",
+            f"arch={arch}",
+            f"mode={info.get('mode','')}",
             f"compile_commands={info.get('compile_commands','')}",
         ]
+        if info.get("mode") == "python":
+            outputs += [f"script={info.get('script','')}", f"out_dir={info.get('out_dir','')}"]
+        else:
+            outputs += [f"target={info.get('target','')}"]
+
         respond_ok("compile_commands ok (gki)", extra={"outputs": outputs})
         return
 
@@ -38,6 +54,7 @@ def main():
     outputs = [
         "flavor=non_gki",
         f"source_dir={info.get('source_dir','')}",
+        f"script={info.get('script','')}",
         f"out_dir={info.get('out_dir','')}",
         f"compile_commands={info.get('compile_commands','')}",
     ]

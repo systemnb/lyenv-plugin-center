@@ -11,12 +11,14 @@ if ROOT not in sys.path:
 from lyenv_sdk import read_request, respond_ok, respond_error, log
 from scripts.lib.common import cfg, abspath_expand, ensure_file, to_bool
 
+
 def backup_file(path: str) -> str:
     ts = time.strftime("%Y%m%d-%H%M%S")
     bak = path + f".bak.{ts}"
     with open(path, "rb") as fsrc, open(bak, "wb") as fdst:
         fdst.write(fsrc.read())
     return bak
+
 
 def comment_out_all_lines(path: str) -> int:
     """
@@ -43,22 +45,52 @@ def comment_out_all_lines(path: str) -> int:
             f.writelines(out)
     return changed
 
+
 def patch_strict_mode_false(path: str) -> int:
     """
-    Replace kmi_symbol_list_strict_mode = True -> False
+    Patch kmi_symbol_list_strict_mode to False in common/BUILD.bazel.
+
+    Supports these patterns:
+      - kmi_symbol_list_strict_mode = True
+      - kmi_symbol_list_strict_mode: True
+      - "kmi_symbol_list_strict_mode": True
+    Also handles True/true.
+
     Returns number of replacements.
     """
     with open(path, "r", encoding="utf-8", errors="ignore") as f:
         text = f.read()
 
-    # Match both 'True' and 'true' just in case
-    pattern = r'(kmi_symbol_list_strict_mode\s*=\s*)(True|true)'
-    new_text, n = re.subn(pattern, r'\1False', text)
+    # Match:
+    #   optional quotes around key
+    #   key name
+    #   separator '=' or ':'
+    #   value True/true
+    #
+    # Keep the left side unchanged and replace only the value with False.
+    pattern = r'((?:"\s*)?kmi_symbol_list_strict_mode(?:\s*"\s*)?\s*[:=]\s*)(True|true)\b'
+    new_text, n = re.subn(pattern, r"\1False", text)
 
     if n:
         with open(path, "w", encoding="utf-8") as f:
             f.write(new_text)
+
     return n
+
+
+def verify_strict_mode_disabled(path: str) -> None:
+    """
+    Verify there is no 'kmi_symbol_list_strict_mode' set to True after patching.
+    Raise error if still found.
+    """
+    with open(path, "r", encoding="utf-8", errors="ignore") as f:
+        text = f.read()
+
+    # Detect any remaining True assignment (covers ':' and '=' and optional quotes)
+    bad = re.search(r'(?:"\s*)?kmi_symbol_list_strict_mode(?:\s*"\s*)?\s*[:=]\s*(True|true)\b', text)
+    if bad:
+        raise RuntimeError("kmi_symbol_list_strict_mode is still True after patching (pattern mismatch or file changed).")
+
 
 def main():
     read_request()
@@ -93,12 +125,21 @@ def main():
     changed_deny = comment_out_all_lines(deny_path)
     changed_bazel = patch_strict_mode_false(bazel_path)
 
+    # Verify patch actually worked
+    try:
+        verify_strict_mode_disabled(bazel_path)
+        outputs.append("strict_mode_verify=ok")
+    except Exception as e:
+        # Fail fast (better than silent success)
+        respond_error(f"abi_upstream failed: {e}", code=2, extra={"outputs": outputs})
+
     outputs += [
         f"deny_commented_lines={changed_deny}",
         f"strict_mode_replacements={changed_bazel}",
     ]
 
     respond_ok("abi_upstream ok", extra={"outputs": outputs})
+
 
 if __name__ == "__main__":
     try:
@@ -108,4 +149,3 @@ if __name__ == "__main__":
     except Exception as e:
         log(f"[abi_upstream] error: {e}")
         respond_error(str(e), code=3)
-

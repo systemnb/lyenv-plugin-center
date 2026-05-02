@@ -222,7 +222,7 @@ kade img repack boot.img /tmp/boot_out --out /tmp/new_boot.img -- --any-extra-ar
 kade driver add --name <项目名> [--module <模块.ko>] [--src <外部源码目录>]
 
 # 重命名已有驱动
-kade driver rename <旧项目名> <新项目名>
+kade driver rename <旧项目名> <新项目名> [--module <新模块.ko>]
 ```
 
 
@@ -469,7 +469,7 @@ Manage kernel driver projects:
 kade driver add --name <project> [--module <module.ko>] [--src <external_source>]
 
 # Rename an existing driver
-kade driver rename <old_name> <new_name>
+kade driver rename <old_name> <new_name> [--module <new_module.ko>]
 ```
 
 ---

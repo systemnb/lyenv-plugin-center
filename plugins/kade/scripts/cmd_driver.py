@@ -84,73 +84,100 @@ def cmd_add(source_dir: str, android_ver: int, arch: str):
     ]
     respond_ok("driver add ok", extra={"outputs": outputs})
 
-
 def cmd_rename(source_dir: str, android_ver: int, arch: str):
-    """Handle 'kade driver rename <old_name> <new_name>'"""
+    """Handle 'kade driver rename <old_project> <new_project> [--module <new_module.ko>]'"""
     full_args = rt_args()
-    if len(full_args) < 3:
-        respond_error("Usage: kade driver rename <old_project_name> <new_project_name>", code=2)
+
+    # Extract positional arguments and optional --module
+    # Expected: [subcmd, old, new, --module, value]
+    positional = []
+    new_module = ""
+    i = 1  # skip subcmd "rename"
+    while i < len(full_args):
+        if full_args[i] == "--module" and i + 1 < len(full_args):
+            new_module = full_args[i + 1]
+            i += 2
+        else:
+            positional.append(full_args[i])
+            i += 1
+
+    if len(positional) < 2:
+        respond_error("Usage: kade driver rename <old_name> <new_name> [--module <new_module.ko>]", code=2)
         return
 
-    old = full_args[1]
-    new = full_args[2]
+    old = positional[0]
+    new = positional[1]
 
     if old == new:
         respond_ok("Names identical, nothing to do")
         return
 
-    # 1. Rename driver directory under common/drivers/
+    # 1. Get old driver config from global drivers list
+    drivers = get_drivers_config()
+    old_driver_config = next((d for d in drivers if d.get("project_name") == old), None)
+    if old_driver_config is None:
+        respond_error(f"Driver '{old}' not found in configuration (gki.drivers or gki.driver)", code=2)
+
+    # Determine new module name
+    if not new_module:
+        old_module = old_driver_config.get("module_name", "")
+        if old_module == f"{old}.ko":
+            new_module = f"{new}.ko"
+        else:
+            new_module = old_module  # keep unchanged
+
+    # 2. Rename directory
     old_dir = os.path.join(source_dir, "common", "drivers", old)
     new_dir = os.path.join(source_dir, "common", "drivers", new)
     if not os.path.isdir(old_dir):
         respond_error(f"Driver directory not found: {old_dir}", code=2)
     if os.path.exists(new_dir):
-        respond_error(f"Target driver directory already exists: {new_dir}. Remove it first.", code=2)
+        respond_error(f"Target directory already exists: {new_dir}. Remove it first.", code=2)
 
     log(f"[driver rename] Renaming {old_dir} -> {new_dir}")
     os.rename(old_dir, new_dir)
 
-    # 2. Update Makefile
+    # 3. Update Makefile
     makefile = os.path.join(source_dir, "common", "drivers", "Makefile")
     mk_updated = _replace_in_file(makefile, f"obj-y += {old}/", f"obj-y += {new}/")
-
-    # 3. Update legacy module list (gki_{arch}_modules)
+    
+    # 4. Update legacy list (gki_{arch}_modules)
+    old_module_path_rel = f"drivers/{old}/{old_driver_config.get('module_name', '')}"
+    new_module_path_rel = f"drivers/{new}/{new_module}"
     legacy_list = os.path.join(source_dir, "common", "android", f"gki_{arch}_modules")
     if os.path.isfile(legacy_list):
-        _replace_in_file(legacy_list, f"drivers/{old}/", f"drivers/{new}/")
+        # Replace the full module path including file name
+        old_path = f"drivers/{old}/{old_driver_config.get('module_name', '')}"
+        new_path = f"drivers/{new}/{new_module}"
+        _replace_in_file(legacy_list, old_path, new_path)
+    else:
+        log(f"[rename] Legacy module list not found: {legacy_list}")
 
-    # 4. Update modules.bzl
+    # 5. Update modules.bzl
     modules_bzl = os.path.join(source_dir, "common", "modules.bzl")
     if os.path.isfile(modules_bzl):
-        _replace_in_file(modules_bzl, f"drivers/{old}/", f"drivers/{new}/")
+        old_path_quoted = f'"{old_module_path_rel}"'
+        new_path_quoted = f'"{new_module_path_rel}"'
+        _replace_in_file(modules_bzl, old_path_quoted, new_path_quoted)
+    else:
+        log(f"[rename] modules.bzl not found: {modules_bzl}")
 
-    # 5. Update config (gki.drivers list or gki.driver)
-    drivers = get_drivers_config()
-    changed = False
-    for drv in drivers:
-        if drv.get("project_name") == old:
-            drv["project_name"] = new
-            # If in_tree_path was auto-generated, update it too
-            if drv.get("in_tree_path", "").endswith(f"/{old}"):
-                drv["in_tree_path"] = drv["in_tree_path"].replace(f"/{old}", f"/{new}")
-            changed = True
-            break
+    # 6. Update driver config in config.yaml
+    old_driver_config["project_name"] = new
+    old_driver_config["module_name"] = new_module
+    # If in_tree_path is auto-generated, update it as well
+    if old_driver_config.get("in_tree_path", "").endswith(f"/{old}"):
+        old_driver_config["in_tree_path"] = old_driver_config["in_tree_path"].replace(f"/{old}", f"/{new}")
 
-    if changed:
-        from lyenv_sdk import plugin_write_config
-        plugin_write_config("gki.drivers", drivers)
+    # Persist the updated drivers list
+    from lyenv_sdk import plugin_write_config
+    # Re‑set the whole list (mutated entry is already inside the list reference)
+    plugin_write_config("gki.drivers", drivers)
 
-    # 6. Optionally update derived (best effort)
-    # (Derived will be refreshed on next prepare, but we keep consistency)
-    from scripts.lib.common import set_derived
-    set_derived(f"derived.gki.drivers.{new}.dest_dir", new_dir)
-
-    outputs = [
-        f"old={old}",
-        f"new={new}",
-        f"makefile_updated={mk_updated}",
-    ]
-    respond_ok(f"Renamed driver '{old}' to '{new}' successfully", extra={"outputs": outputs})
+    respond_ok(f"Renamed driver '{old}' to '{new}' successfully", extra={
+        "outputs": [f"old={old}", f"new={new}", f"new_module={new_module}",
+                    f"makefile_updated={mk_updated}"]
+    })
 
 def cmd_add_non_gki(source_dir):
     """Non-GKI version of driver add."""

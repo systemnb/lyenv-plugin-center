@@ -404,3 +404,123 @@ def export_abi(source_dir: str, arch: str, symbols: List[str], mode: str, do_sor
             for s in to_add:
                 f.write(s + "\n")
     return {"abi_file": abi_file, "replaced": False, "added": len(to_add)}
+
+def get_drivers_config() -> list:
+    """
+    Return list of driver config dicts.
+    If gki.drivers is present and non-empty, use it; otherwise fall back to gki.driver.
+    """
+    drivers_cfg = cfg("gki.drivers", None)
+    if drivers_cfg and isinstance(drivers_cfg, list) and len(drivers_cfg) > 0:
+        return drivers_cfg
+    # Fallback to legacy single driver
+    single = cfg("gki.driver", {})
+    if single and single.get("project_name"):
+        return [single]
+    return []
+
+
+def _integrate_one_driver(source_dir: str, android_ver: int, arch: str, drv_cfg: dict) -> dict:
+    """
+    Integrate a single driver according to its config dictionary.
+    Returns a dict with details of the operation.
+    """
+    project = str(drv_cfg.get("project_name", "")).strip()
+    if not project:
+        raise ValueError("Driver project_name is empty")
+
+    module_name = str(drv_cfg.get("module_name", "")).strip()
+    in_tree = to_bool(drv_cfg.get("in_tree", True), True)
+    in_tree_path = str(drv_cfg.get("in_tree_path", "")).strip()
+    if not in_tree_path:
+        in_tree_path = os.path.join("common", "drivers", project)
+    overwrite = to_bool(drv_cfg.get("overwrite", True), True)
+
+    # Determine driver source directory
+    driver_dest_dir = abspath_expand(os.path.join(source_dir, in_tree_path))
+    if in_tree:
+        driver_src_dir = driver_dest_dir
+    else:
+        ext = str(drv_cfg.get("external_src_dir", "")).strip()
+        if not ext:
+            ws = infer_workspace()
+            ext = os.path.join(ws, project)
+        if not os.path.isabs(ext):
+            ext = os.path.join(source_dir, ext)
+        driver_src_dir = abspath_expand(ext)
+
+    # Copy driver tree
+    copied = copy_driver_tree(driver_src_dir, driver_dest_dir, overwrite)
+
+    # Modify common/drivers/Makefile
+    drivers_makefile = os.path.join(source_dir, "common", "drivers", "Makefile")
+    makefile_modified = ensure_line_in_file(drivers_makefile, f"obj-y += {project}/")
+
+    # Update module lists
+    module_rel = f"drivers/{project}/{module_name}" if module_name else ""
+    list_updates = _update_module_lists(source_dir, android_ver, arch, module_rel)
+
+    # Store derived info (for other commands)
+    set_derived(f"derived.gki.drivers.{project}.dest_dir", driver_dest_dir)
+
+    return {
+        "project": project,
+        "module_name": module_name,
+        "dest_dir": driver_dest_dir,
+        "copied": copied,
+        "makefile_modified": makefile_modified,
+        "list_updates": list_updates,
+    }
+
+
+def _update_module_lists(source_dir: str, android_ver: int, arch: str, module_rel: str) -> list:
+    """
+    Add the module path to relevant kernel build lists.
+    Returns a list of human-readable update descriptions.
+    """
+    if not module_rel:
+        return ["module_name empty, skipping list updates"]
+
+    legacy_list = os.path.join(source_dir, "common", "android", f"gki_{arch}_modules")
+    modules_bzl = os.path.join(source_dir, "common", "modules.bzl")
+    updates = []
+
+    if android_ver <= 13:
+        legacy_changed = ensure_line_in_file(legacy_list, module_rel)
+        updates.append(f"legacy_list={'added' if legacy_changed else 'already present'}")
+        if os.path.isfile(modules_bzl):
+            bzl_changed = insert_module_into_modules_bzl(modules_bzl, module_rel)
+            updates.append(f"modules.bzl={'added' if bzl_changed else 'already present'}")
+        else:
+            updates.append("modules.bzl not found, skipping")
+    else:
+        if os.path.isfile(modules_bzl):
+            bzl_changed = insert_module_into_modules_bzl(modules_bzl, module_rel)
+            updates.append(f"modules.bzl={'added' if bzl_changed else 'already present'}")
+        else:
+            updates.append("modules.bzl not found, skipping")
+
+    return updates
+
+
+def integrate_drivers(source_dir: str, android_ver: int, arch: str) -> dict:
+    """
+    Integrate all configured drivers (from gki.drivers or gki.driver).
+    Returns a summary dict containing a list of per-driver results.
+    """
+    drivers_cfg = get_drivers_config()
+    if not drivers_cfg:
+        log("[gki] No drivers configured, skipping integration")
+        return {"drivers": []}
+
+    results = []
+    for drv in drivers_cfg:
+        try:
+            res = _integrate_one_driver(source_dir, android_ver, arch, drv)
+            results.append(res)
+        except Exception as e:
+            log(f"[gki] Failed to integrate driver {drv.get('project_name', '?')}: {e}")
+            # Continue with other drivers (don't stop the whole build)
+            results.append({"error": str(e), "project": drv.get("project_name", "")})
+
+    return {"drivers": results}

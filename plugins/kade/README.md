@@ -213,6 +213,19 @@ kade img pack-ramdisk /tmp/ramdisk_out --out /tmp/build.cpio.lz4
 kade img repack boot.img /tmp/boot_out --out /tmp/new_boot.img -- --any-extra-args
 ```
 
+#### 6.11 driver
+
+管理内核驱动项目：
+
+```bash
+# 添加一个驱动
+kade driver add --name <项目名> [--module <模块.ko>] [--src <外部源码目录>]
+
+# 重命名已有驱动
+kade driver rename <旧项目名> <新项目名>
+```
+
+
 ---
 
 ### 7. 推荐工作流
@@ -446,6 +459,17 @@ kade img unpack boot.img --out /tmp/boot_out
 kade img extract-ramdisk ramdisk.cpio.lz4 --out /tmp/ramdisk_out
 kade img pack-ramdisk /tmp/ramdisk_out --out /tmp/build.cpio.lz4
 kade img repack boot.img /tmp/boot_out --out /tmp/new_boot.img -- --any-extra-args
+```
+#### 6.11 driver
+
+Manage kernel driver projects:
+
+```bash
+# Add a driver
+kade driver add --name <project> [--module <module.ko>] [--src <external_source>]
+
+# Rename an existing driver
+kade driver rename <old_name> <new_name>
 ```
 
 ---

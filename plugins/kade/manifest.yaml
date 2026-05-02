@@ -1,5 +1,5 @@
 name: kade
-version: 0.4.3
+version: 0.4.4
 expose:
   - kade
 
@@ -30,6 +30,14 @@ commands:
       - executor: stdio
         program: python3
         args: ["./scripts/cmd_sync.py"]
+        workdir: .
+        use_stdio: true
+  - name: driver
+    summary: "Manage kernel drivers (add, rename)"
+    steps:
+      - executor: stdio
+        program: python3
+        args: ["./scripts/cmd_driver.py"]
         workdir: .
         use_stdio: true
 

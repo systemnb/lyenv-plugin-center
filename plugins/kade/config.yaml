@@ -41,6 +41,9 @@ gki:
     module_name: "mydriver.ko"
     overwrite: true
 
+  # If this list is non-empty, the legacy gki.driver is ignored.
+  drivers: []
+
   build:
     jobs: 32
     legacy_args: []
@@ -72,6 +75,9 @@ non_gki:
     # Destination for repo/zip:
     dest_path: ""
     dest_dir_name: "non-gki-kernel"
+  
+  # If drivers list is non-empty, the legacy single driver is ignored.
+  drivers: []
 
   build:
     # mode: script | make

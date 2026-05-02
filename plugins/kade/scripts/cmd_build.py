@@ -67,7 +67,6 @@ def main():
         outputs.append(f"driver:{d.get('project','?')}={d.get('dest_dir','?')}")
 
     respond_ok("build ok (gki)", extra={"outputs": outputs})
-    respond_ok("build ok (gki)", extra={"outputs": outputs})
 
 if __name__ == "__main__":
     try:

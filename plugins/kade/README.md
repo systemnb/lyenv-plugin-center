@@ -1,3 +1,4 @@
+
 # kade — Android Kernel Driver Builder Plugin
 
 [中文](#中文) | [English](#english)
@@ -13,6 +14,7 @@
 - **GKI**：repo 同步、驱动集成（drivers/Makefile + modules 列表）、Bazel/legacy 构建、导出 compile_commands、ABI 列表写入/上游 ABI 修补。
 - **non-GKI**：源码获取（repo/local/zip），**按用户配置**直接构建（script 或可选 make 模式），导出 compile_commands。
 - 工具命令：依赖安装、清理构建缓存、导出产物、镜像（boot/vendor_boot/system）解包/回包辅助。
+- **project**：多驱动项目管理（GKI only），支持添加/删除/列出驱动项目。
 
 > 设计原则：**稳定、可维护、可配置**。参数从 `lyenv_sdk.args()` 获取，不依赖 `sys.argv`。
 
@@ -38,6 +40,10 @@
 - **clean**：清理构建缓存（安全模式：仅清理 workspace/source_dir 下的路径）
 - **export**：导出编译产物（copy 或 tar.gz）
 - **img**：boot/vendor_boot/system 镜像处理（解包/回包、ramdisk lz4+cpio）
+- **project**：管理多个驱动项目（GKI only）  
+  - `add`：添加项目配置（不立刻集成）  
+  - `remove`：删除项目配置  
+  - `list`：列出所有已添加的项目
 
 ---
 
@@ -121,6 +127,17 @@ non_gki:
     script: "build.sh"
 ```
 
+#### 多项目管理
+
+除了在 `config.yaml` 中手工维护 `gki.projects` 列表外，推荐使用 `kade project` 命令动态管理：
+
+```bash
+kade project add --name mydriver --module mydriver.ko
+kade project add --name extdrv --module extdrv.ko --external-src-dir /path/to/src
+```
+
+这些命令会将项目持久化到插件配置中，无需直接编辑 YAML。
+
 ---
 
 ### 6. 命令
@@ -145,7 +162,7 @@ kade sync
 
 #### 6.3 build
 
-构建：
+构建（GKI 会自动集成所有已配置的驱动项目）：
 
 ```bash
 kade build
@@ -213,31 +230,98 @@ kade img pack-ramdisk /tmp/ramdisk_out --out /tmp/build.cpio.lz4
 kade img repack boot.img /tmp/boot_out --out /tmp/new_boot.img -- --any-extra-args
 ```
 
-#### 6.11 driver
+#### 6.11 project（GKI only）
 
-管理内核驱动项目：
+管理多个驱动项目配置。添加项目后，需执行 `kade build` 才会实际集成驱动（拷贝源码、写入 Makefile / modules.bzl）。
+
+| 子命令   | 说明                         |
+|----------|------------------------------|
+| `add`    | 添加新的驱动项目到配置列表   |
+| `remove` | 从配置列表中删除一个项目     |
+| `list`   | 显示当前所有已添加的项目     |
+
+##### 6.11.1 添加项目
 
 ```bash
-# 添加一个驱动
-kade driver add --name <项目名> [--module <模块.ko>] [--src <外部源码目录>]
-
-# 重命名已有驱动
-kade driver rename <旧项目名> <新项目名> [--module <新模块.ko>]
+kade project add --name <项目名> --module <模块文件名> [选项]
 ```
 
+| 选项                     | 说明                                 | 默认值                          |
+|--------------------------|--------------------------------------|---------------------------------|
+| `--name`                 | 项目名称（必填）                     | -                               |
+| `--module`               | 模块文件名，如 `mydriver.ko`（必填）| -                               |
+| `--in-tree`              | 驱动源码位于内核树内                 | `true`（默认）                  |
+| `--external-src-dir`     | 外部驱动源码目录（非 in-tree 时使用）| 空                              |
+| `--in-tree-path`         | 内核树内的目标路径                   | `common/drivers/<项目名>`       |
+| `--overwrite true/false` | 是否覆盖已存在的目标目录             | `true`                          |
+
+**示例：**
+
+```bash
+# 基本 in-tree 驱动
+kade project add --name mydriver --module mydriver.ko
+
+# 显式指定 in-tree
+kade project add --name mydriver --module mydriver.ko --in-tree
+
+# 外部源码目录
+kade project add --name extdrv --module extdrv.ko \
+    --external-src-dir /path/to/external/source
+
+# 自定义内核树安装路径
+kade project add --name customdrv --module customdrv.ko \
+    --in-tree-path common/drivers/my_custom_path
+
+# 禁止覆盖（若目标目录已存在则报错）
+kade project add --name keepdrv --module keepdrv.ko --overwrite false
+```
+
+##### 6.11.2 删除项目
+
+```bash
+kade project remove --name <项目名>
+```
+
+**示例：**
+
+```bash
+kade project remove --name extdrv
+```
+
+##### 6.11.3 列出项目
+
+```bash
+kade project list
+```
+
+**输出示例：**
+
+```
+  - mydriver (module: mydriver.ko, in_tree: True)
+  - customdrv (module: customdrv.ko, in_tree: True)
+```
+
+> **注意：**  
+> - 当 `gki.projects` 列表不为空时，`build` 命令将仅使用列表中的项目，而忽略旧的 `gki.driver` 单一配置。  
+> - 如果未使用 `project add` 但仍保留了 `gki.driver` 配置，`build` 会自动将其作为单个项目处理，保持向后兼容。
 
 ---
 
 ### 7. 推荐工作流
 
-#### GKI
+#### GKI（多项目示例）
 
 ```bash
+# 添加多个驱动项目
+kade project add --name drv1 --module drv1.ko
+kade project add --name drv2 --module drv2.ko --external-src-dir /src/drv2
+
+# 常规构建流程
 kade prepare
 kade sync
-kade abi_upstream          # 可选：需要放开上游限制时
-kade abi --file symbols.txt # 可选：按需写入符号
-kade build
+kade abi_upstream          # 可选：放开 ABI 限制
+kade abi --file symbols.txt # 可选：写入 ABI 符号
+kade build                 # 自动集成所有项目并构建
 kade export
 kade compile_commands
 ```
@@ -247,7 +331,7 @@ kade compile_commands
 ```bash
 kade prepare
 kade sync
-kade build                 # 由用户脚本或 make 模式决定
+kade build
 kade export
 kade compile_commands
 ```
@@ -267,6 +351,9 @@ kade compile_commands
 
 **compile_commands 缺少 gen_compile_commands.py**  
 non-GKI 会优先使用内核树内的脚本，不存在时自动使用插件自带 fallback 脚本（可在 config 中设置路径）。
+
+**多项目配置不生效**  
+确保使用了 `kade project add` 且执行了 `kade build`。如果仍想使用旧的单驱动配置，请确保 `gki.projects` 列表为空。
 
 ---
 
@@ -305,6 +392,7 @@ scripts/
 - **GKI**: repo sync, driver integration (Makefile + module list), Bazel/legacy builds, compile_commands export, ABI list editing and upstream ABI patching.
 - **non-GKI**: source fetch (repo/local/zip), build via user-configured script (or optional make mode), compile_commands export.
 - **Utilities**: dependency installation, build cache cleanup, artifact export, image (boot/vendor_boot/system) unpack/repack helpers.
+- **project**: manage multiple driver projects (GKI only), add/remove/list driver configurations.
 
 > Design goal: **stable, maintainable, and configurable**. Arguments are read from `lyenv_sdk.args()` (not `sys.argv`).
 
@@ -330,6 +418,10 @@ scripts/
 - **clean**: remove build outputs/caches (safe-only mode)
 - **export**: copy/archive build artifacts to a destination directory
 - **img**: boot/vendor_boot/system image helpers (unpack/repack, ramdisk lz4+cpio)
+- **project**: manage multiple driver projects (GKI only)  
+  - `add`: add project configuration (integration deferred to `build`)  
+  - `remove`: remove project configuration  
+  - `list`: list all added projects
 
 ---
 
@@ -391,6 +483,17 @@ non_gki:
     mode: "script"
     script: "build.sh"
 ```
+
+#### Multi-project management
+
+In addition to manually maintaining `gki.projects` in `config.yaml`, you can dynamically manage projects via the `kade project` command:
+
+```bash
+kade project add --name mydriver --module mydriver.ko
+kade project add --name extdrv --module extdrv.ko --external-src-dir /path/to/src
+```
+
+These commands persist the project list to the plugin configuration, no need to edit YAML directly.
 
 ---
 
@@ -460,30 +563,99 @@ kade img extract-ramdisk ramdisk.cpio.lz4 --out /tmp/ramdisk_out
 kade img pack-ramdisk /tmp/ramdisk_out --out /tmp/build.cpio.lz4
 kade img repack boot.img /tmp/boot_out --out /tmp/new_boot.img -- --any-extra-args
 ```
-#### 6.11 driver
 
-Manage kernel driver projects:
+#### 6.11 project (GKI only)
+
+Manage multiple driver project configurations. After adding projects, run `kade build` to actually integrate drivers (copy sources, update Makefile / modules.bzl).
+
+| Subcommand | Description                                      |
+|------------|--------------------------------------------------|
+| `add`      | Add a new driver project to the configuration    |
+| `remove`   | Remove a project from the configuration          |
+| `list`     | Display all currently added projects             |
+
+##### 6.11.1 Adding a Project
 
 ```bash
-# Add a driver
-kade driver add --name <project> [--module <module.ko>] [--src <external_source>]
-
-# Rename an existing driver
-kade driver rename <old_name> <new_name> [--module <new_module.ko>]
+kade project add --name <name> --module <module_file> [options]
 ```
+
+| Option                     | Description                                      | Default                      |
+|----------------------------|--------------------------------------------------|------------------------------|
+| `--name`                   | Project name (required)                          | -                            |
+| `--module`                 | Module file name, e.g. `mydriver.ko` (required)  | -                            |
+| `--in-tree`                | Driver source is inside the kernel tree          | `true`                       |
+| `--external-src-dir`       | External source directory (if not in-tree)       | empty                        |
+| `--in-tree-path`           | Target path inside the kernel tree               | `common/drivers/<name>`      |
+| `--overwrite true/false`   | Overwrite existing destination directory         | `true`                       |
+
+**Examples:**
+
+```bash
+# Basic in-tree driver
+kade project add --name mydriver --module mydriver.ko
+
+# Explicit in-tree flag
+kade project add --name mydriver --module mydriver.ko --in-tree
+
+# External source directory
+kade project add --name extdrv --module extdrv.ko \
+    --external-src-dir /path/to/external/source
+
+# Custom installation path inside kernel tree
+kade project add --name customdrv --module customdrv.ko \
+    --in-tree-path common/drivers/my_custom_path
+
+# Prevent overwriting an existing directory
+kade project add --name keepdrv --module keepdrv.ko --overwrite false
+```
+
+##### 6.11.2 Removing a Project
+
+```bash
+kade project remove --name <name>
+```
+
+**Example:**
+
+```bash
+kade project remove --name extdrv
+```
+
+##### 6.11.3 Listing Projects
+
+```bash
+kade project list
+```
+
+**Sample output:**
+
+```
+  - mydriver (module: mydriver.ko, in_tree: True)
+  - customdrv (module: customdrv.ko, in_tree: True)
+```
+
+> **Notes:**  
+> - When the `gki.projects` list is non‑empty, `build` will use only those projects and ignore the legacy `gki.driver` single configuration.  
+> - If you haven’t used `project add` but still have `gki.driver` configured, `build` will automatically treat it as a single project, ensuring backward compatibility.
 
 ---
 
 ### 7. Suggested Workflows
 
-#### GKI
+#### GKI (with multiple projects)
 
 ```bash
+# Add multiple driver projects
+kade project add --name drv1 --module drv1.ko
+kade project add --name drv2 --module drv2.ko --external-src-dir /src/drv2
+
+# Standard build workflow
 kade prepare
 kade sync
 kade abi_upstream           # optional
 kade abi --file symbols.txt # optional
-kade build
+kade build                  # integrates all projects then builds
 kade export
 kade compile_commands
 ```
@@ -513,6 +685,9 @@ Expected; user must set `non_gki.build.script`.
 
 **Missing gen_compile_commands.py**  
 non-GKI uses fallback script shipped by plugin if the kernel tree does not provide one.
+
+**Multi-project config not working**  
+Make sure you used `kade project add` and then ran `kade build`. If you still prefer the old single-driver configuration, ensure the `gki.projects` list is empty.
 
 ---
 

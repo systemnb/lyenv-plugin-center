@@ -1,5 +1,5 @@
 name: kade
-version: 0.4.6
+version: 0.4.4
 expose:
   - kade
 
@@ -30,14 +30,6 @@ commands:
       - executor: stdio
         program: python3
         args: ["./scripts/cmd_sync.py"]
-        workdir: .
-        use_stdio: true
-  - name: driver
-    summary: "Manage kernel drivers (add, rename)"
-    steps:
-      - executor: stdio
-        program: python3
-        args: ["./scripts/cmd_driver.py"]
         workdir: .
         use_stdio: true
 
@@ -100,5 +92,13 @@ commands:
       - executor: stdio
         program: python3
         args: ["./scripts/cmd_img.py"]
+        workdir: .
+        use_stdio: true
+  - name: project
+    summary: "Manage multiple driver projects (add/remove/list)"
+    steps:
+      - executor: stdio
+        program: python3
+        args: ["./scripts/cmd_project.py"]
         workdir: .
         use_stdio: true

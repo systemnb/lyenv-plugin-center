@@ -1,4 +1,6 @@
 # scripts/cmd_build.py
+# Build command: integrates drivers (multiple projects supported) and compiles the kernel.
+
 import os
 import sys
 
@@ -8,9 +10,11 @@ if ROOT not in sys.path:
 
 from lyenv_sdk import read_request, respond_ok, respond_error, log
 from scripts.lib.common import cfg, to_int
-from scripts.lib.gki import infer_workspace, infer_source_dir, integrate_drivers, build as gki_build
+from scripts.lib.gki import (
+    infer_workspace, infer_source_dir,
+    integrate_all_drivers, build as gki_build
+)
 from scripts.lib.non_gki import build as non_gki_build
-from scripts.lib.non_gki import integrate_non_gki_drivers
 
 def main():
     read_request()
@@ -20,15 +24,12 @@ def main():
         respond_error("kernel.flavor must be gki|non_gki", code=2)
 
     if flavor == "non_gki":
-        # Integrate all configured drivers before building
-        prep = integrate_non_gki_drivers(source_dir)  # source_dir 需已定义
         info = non_gki_build(heartbeat)
         outputs = [f"{k}={v}" for k, v in info.items()]
-        outputs.append(f"num_drivers={len(prep.get('drivers',[]))}")
         respond_ok("build ok (non_gki)", extra={"outputs": outputs})
         return
 
-    # GKI
+    # GKI flow
     source_dir = str(cfg("derived.gki.source_dir", "") or "").strip()
     if not source_dir:
         ws = infer_workspace()
@@ -41,12 +42,13 @@ def main():
 
     arch = str(cfg("gki.target_arch", "aarch64") or "aarch64").strip()
 
-    # Pre-steps: integrate driver + update module lists
-    prep = integrate_drivers(source_dir, android_ver, arch)
+    # Integrate all driver projects (single or multiple)
+    integration_results = integrate_all_drivers(source_dir, android_ver, arch)
 
-    # Build
+    # Build kernel
     binfo = gki_build(source_dir, android_ver, kernel_ver, arch, heartbeat)
 
+    # Build detailed output
     outputs = [
         "flavor=gki",
         f"source_dir={source_dir}",
@@ -55,16 +57,16 @@ def main():
         f"arch={arch}",
         f"output_path_abs={binfo.get('output_path_abs','')}",
         f"output_path_rel={binfo.get('output_path_rel','')}",
-        f"driver_project={prep.get('project','')}",
-        f"driver_dest_dir={prep.get('driver_dest_dir','')}",
-        f"driver_copied={prep.get('copied','')}",
-        f"module_rel={prep.get('module_rel','')}",
-        f"module_list_path={prep.get('module_list_path','')}",
-        f"module_list_modified={prep.get('module_list_modified','')}",
+        f"projects_integrated={len(integration_results)}",
     ]
-
-    for d in prep.get("drivers", []):
-        outputs.append(f"driver:{d.get('project','?')}={d.get('dest_dir','?')}")
+    for idx, res in enumerate(integration_results):
+        outputs.append(f"project_{idx}_name={res.get('project','')}")
+        outputs.append(f"project_{idx}_module={res.get('module_rel','')}")
+        outputs.append(f"project_{idx}_driver_dest_dir={res.get('driver_dest_dir','')}")
+        outputs.append(f"project_{idx}_copied={res.get('copied','')}")
+        # Include list update details if needed
+        for upd in res.get('list_updates', []):
+            outputs.append(f"project_{idx}_list_update={upd}")
 
     respond_ok("build ok (gki)", extra={"outputs": outputs})
 
